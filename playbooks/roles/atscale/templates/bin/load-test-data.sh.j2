@@ -1,0 +1,36 @@
+#!/bin/bash
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --connId)
+      CONNECTION_ID="--connId $2"
+      shift 2
+    ;;
+    *)
+      echo "ERROR *** Unexpected parameter ($1)"
+      exit 1
+    ;;
+  esac
+done
+
+/image-util/load-sample-data.sh ${CONNECTION_ID} --schema database_a --noCreate true
+
+curl -o /data/sales-insights-qa.zip http://artifactory.infra.atscale.com/release-local/com/atscale/data/sales-insights-qa/1.0.0.1/sales-insights-qa-1.0.0.1.zip
+RET=$?
+if [ $RET -ne 0 ]; then
+  echo "Failed to download sales-insights data ($RET)."
+  exit 1
+fi
+
+{{ image_util_dir }}/load-sample-data.sh ${CONNECTION_ID} --bundle /data/sales-insights-qa.zip --schema database_a
+
+curl -o /data/gaming-qa.zip http://artifactory.infra.atscale.com/release-local/com/atscale/data/gaming/1.0.0.9/gaming-1.0.0.9.zip
+RET=$?
+if [ $RET -ne 0 ]; then
+  echo "Failed to download gaming data ($RET)."
+  exit 1
+fi
+
+{{ image_util_dir }}/load-sample-data.sh ${CONNECTION_ID} --bundle /data/gaming-qa.zip --schema database_b
+
+exit 0

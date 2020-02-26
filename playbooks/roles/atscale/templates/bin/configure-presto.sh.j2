@@ -1,0 +1,105 @@
+#!/bin/bash
+
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+{% else %}
+{% set protocol = "http" %}
+{% endif %}
+
+ATSCALE_USER=${ATSCALE_USER:-admin}
+ATSCALE_PASSWORD=${ATSCALE_PASSWORD:-admin}
+ATSCALE_ENGINE=${ATSCALE_ENGINE:-localhost}
+ATSCALE_ENGINE_PORT=${ATSCALE_ENGINE_PORT:-10502}
+ATSCALE_MODELER=${ATSCALE_MODELER:-localhost}
+ATSCALE_MODELER_PORT=${ATSCALE_MODELER_PORT:-10500}
+ORG_ID=${ORG_ID:-default}
+HDFS_URI=${HDFS_URI:-"hdfs://hadoop-node-01.docker.infra.atscale.com:8020"}
+
+JWT=$(curl -X GET -u $ATSCALE_USER:$ATSCALE_PASSWORD "{{ protocol }}://$ATSCALE_MODELER:$ATSCALE_MODELER_PORT/$ORG_ID/auth")
+
+create_connection_group() {
+        json=$1
+        echo "json now"
+        echo $json
+        echo "end json now"
+        CONNECTION_GROUP_ID=$(curl -v -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID -d "$JSON" | tr -d [:cntrl:] | sed 's/.*"id" : "\([^"]*\)".*/\1/')
+        echo "connection group created"
+}
+
+create_connection_subgroup() {
+        json=$1
+        curl -v -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID/connection-group/$CONNECTION_GROUP_ID -d "$JSON"
+        echo "connection sub group created"
+        echo $(curl -v -X GET -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID/connection-group/$CONNECTION_GROUP_ID/status)
+}
+
+create_environment() {
+	json=$1
+	ENVIRONMENT_ID=$(curl -v -X POST -H "Authorization:Bearer $JWT" http://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/environments/orgId/$ORG_ID -d "$JSON" | tr -d [:cntrl:] | sed 's/.*"id" : "\([^"]*\)".*/\1/')
+	echo "environment created"
+}
+
+NAME="Presto"
+
+GROUP_DATABASE=hive
+GROUP_DEFAULT_SCHEMA=as_adventure
+GROUP_CONN_ID=${GROUP_CONN_ID:-$1}
+
+SUBGROUP_CONNECTOR_TYPE=presto
+SUBGROUP_HOSTS=presto-node-01.docker.infra.atscale.com
+SUBGROUP_PORT=8080
+SUBGROUP_USERNAME=atscaler
+SUBGROUP_PASSWORD=
+SUBGROUP_EXTRA_JDBC_FLAGS=
+SUBGROUP_EXTRA_PROPERTIES="{\"atscaleHoneybeeInstalled\": \"false\"}"
+
+ENV_HIVE_SERVER2_PORT=10000
+
+# dw payload
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME",
+  "connectionId":"$GROUP_CONN_ID",
+  "filesystemType": "hdfs",
+  "filesystemUri": "$HDFS_URI",
+  "hdfsUri": "$HDFS_URI",
+  "database": "$GROUP_DATABASE",
+  "defaultSchema":"$GROUP_DEFAULT_SCHEMA",
+  "aggregateSchema":"$GROUP_DEFAULT_SCHEMA",
+  "subgroups":[]
+}
+ENDL
+)
+
+# this sets GROUP_ID for you to use futher down in JSON
+create_connection_group "$JSON"
+
+# payload to create the engine and attach it to the dw
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME Connection",
+  "connectorType": "$SUBGROUP_CONNECTOR_TYPE",
+  "hosts": "$SUBGROUP_HOSTS",
+  "port": $SUBGROUP_PORT,
+  "username": "$SUBGROUP_USERNAME",
+  "password": "$SUBGROUP_PASSWORD",
+  "extraJdbcFlags": "$SUBGROUP_EXTRA_JDBC_FLAGS",
+  "extraProperties": $SUBGROUP_EXTRA_PROPERTIES,
+  "queryRoles": ["large_user_query_role", "small_user_query_role", "system_query_role"]
+}
+ENDL
+)
+
+create_connection_subgroup "$JSON"
+
+
+# create the env and attach the conn group to it:
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME",
+  "isDefault": true,
+  "connectionIds": ["$CONNECTION_GROUP_ID"],
+  "hiveServer2Port": $ENV_HIVE_SERVER2_PORT
+}
+ENDL
+)
+
+create_environment "$JSON"
+

@@ -1,0 +1,19 @@
+---
+
+installation_location: "{{ atscale_install_target }}"
+service_account: "{{ atscale_user }}"
+loadbalancer_dns_name: "{{ hostvars[groups['atscale-server']|first]['public_dns_name'] }}"
+
+engine:
+  memory: 2G
+
+
+hosts:
+  - dnsname: "{{ hostvars[groups['atscale-server']|first]['public_dns_name'] }}"
+    hostname: {{ hostvars[groups['atscale-server']|first]['private_dns_name'] }}
+    services:
+      - atscale
+      - coordinator
+    override:
+      coordinator:
+        id: 1

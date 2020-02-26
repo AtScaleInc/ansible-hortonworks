@@ -1,0 +1,34 @@
+#!/bin/bash
+
+DEFAULT_ORG_ID=default
+DEFAULT_HIVESERVER2_PORT=11111
+
+{% if as_version is version_compare('7.4', '>=') %}
+
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+jwt=`curl -s -k -u admin:admin "https://localhost:10500/default/auth"`
+{% else %}
+{% set protocol = "http" %}
+jwt=`curl -s -u admin:admin "http://localhost:10500/default/auth"`
+{% endif %}
+
+# Don't try to give the Engine a 'default' Organization if it already has one.
+# One could be there from Postgres DB set-up that gets migrated when the >= 7.4.0 Engine starts.
+curl -f -s -k -H "Authorization:Bearer $jwt" -H "Content-Type: application/json" {{ protocol }}://localhost:10502/organizations/orgId/$DEFAULT_ORG_ID > /dev/null
+STATUS=$?
+
+if [ $STATUS -eq 22 ]; then
+  curl -f -s -k -X POST -H "Authorization:Bearer $jwt" -H "Content-Type: application/json" --data "{\"hiveServer2Port\":$DEFAULT_HIVESERVER2_PORT}" {{ protocol }}://localhost:10502/organizations/orgId/$DEFAULT_ORG_ID > /dev/null
+  RET=$?
+  if [ $RET -ne 0 ]; then
+    echo "Failed to create Organization with ID '$DEFAULT_ORG_ID' ($RET)."
+    exit 1
+  fi
+elif [ $STATUS -ne 0 ]; then
+  echo "Unable to get the status of Organization with ID '$DEFAULT_ORG_ID' ($STATUS)."
+fi
+
+{% endif %}
+
+exit 0

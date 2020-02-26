@@ -1,0 +1,64 @@
+---
+as_atscale_host: {{ hostname_atscale_loadbalancer }}
+as_preview_enabled: 'true'
+as_default_schema: atscale
+is_silent: 'true'
+as_skip_first_time_setup_dialog: 'true'
+as_install_sample_data: 'false'
+as_install_sample_data_omniture: 'false'
+as_target_env: other
+as_distro: MAPR
+as_sub_distro: Unknown
+is_adls: 'false'
+as_use_rpms: 'false'
+as_hive_flavor: atscale-sparksql
+as_hive_flavor_batch: atscale-hive
+as_hive_host_interactive: 127.0.0.1
+as_hive_port_interactive: '10510'
+as_hive_user_interactive: {{ atscale_user }}
+as_hive_password_interactive: ''
+as_hive_host_batch: 127.0.0.1
+as_hive_port_batch: '10511'
+as_hive_user_batch: {{ atscale_user }}
+as_hive_password_batch: ''
+as_install_directory: "{{ atscale_install_target }}"
+as_local_host: {{ hostname_atscale_node_1 }}
+as_engine_memory: 1G
+as_hadoop_common_home: "{{ hadoop_home }}"
+as_hadoop_libexec: "{{ hadoop_home }}/libexec"
+as_hdfs_home: "{{ hadoop_home }}"
+as_hadoop_conf_dir: "{{ hadoop_conf_dir }}"
+as_hive_conf_dir: "{{ hive_conf_dir }}"
+as_tez_conf_dir: ''
+as_compute_stats: 'true'
+as_hdfs_root_dir: "{{ atscale_hdfs_home }}/atscale"
+as_ha_enabled: 'true'
+as_ha_node_type: master
+as_ha_node_number: '1'
+as_ha_postgres_addresses: {{ hostname_atscale_node_1 }},{{ hostname_atscale_node_2 }}
+as_ha_cluster_fqdns: {{ hostname_atscale_node_1 }},{{ hostname_atscale_node_2 }}
+hll_enabled: 'true'
+hll_create_jar: 'true'
+as_drill_to_raw_query_limit_optional: 'true'
+as_license_file: "{{ atscale_home }}/dev-vm-license.json"
+as_license_source: atscale
+lzo_jar_location: ''
+as_hive_metastore_database: 'false'
+ruby_bin: "/tmp/puppet/embedded/bin/ruby"
+hadoop_classpath: "{{ hadoop_home }}/etc/hadoop:{{ hadoop_home }}/share/hadoop/common/lib/*:{{ hadoop_home }}/share/hadoop/common/*:{{ hadoop_home }}/share/hadoop/hdfs:{{ hadoop_home }}/share/hadoop/hdfs/lib/*:{{ hadoop_home }}/share/hadoop/hdfs/*:{{ hadoop_home }}/share/hadoop/yarn/lib/*:{{ hadoop_home }}/share/hadoop/yarn/*:{{ hadoop_home }}/share/hadoop/mapreduce/lib/*:{{ hadoop_home }}/share/hadoop/mapreduce/*:/contrib/capacity-scheduler/*.jar:/opt/mapr/lib/kvstore*.jar:/opt/mapr/lib/libprotodefs*.jar:/opt/mapr/lib/baseutils*.jar:/opt/mapr/lib/maprutil*.jar:/opt/mapr/lib/json-20080701.jar:/opt/mapr/lib/flexjson-2.1.jar"
+as_namenode: maprfs:///
+thrifty_client_protocol: cloudera
+as_auth_host: ''
+as_secure_installation: 'false'
+has_custom_truststore: ''
+as_is_kerberized: 'false'
+mapr_version: 6.1.0
+mapr_native_security_enabled: 'false'
+as_hive_queue: default
+as_hive_scratchdir: ''
+as_hive_warehouse: ''
+as_spark_queue: default
+as_spark_mem: 1G
+as_spark_cores: '1'
+as_spark_workers: '1'
+compute_stats_disabled: ''

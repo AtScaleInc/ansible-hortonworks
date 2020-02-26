@@ -1,0 +1,36 @@
+#!/bin/bash 
+
+WAIT_TIME=30
+SLEEP_TIME=5
+MAX_LOOP=100
+
+KINIT="kinit -kt {{krb_keytab_dir}}/atscaler.keytab atscaler/{{hostname_atscale}}@{{krb_realm}}"
+
+function wait_for_kerberos() {
+  VAL="$(timeout $WAIT_TIME ${KINIT} > /dev/null 2>&1 && echo ok)"
+  RET=$?
+  if [ $RET -eq 0 ]; then
+    if [[ "$VAL" == "ok" ]]; then
+      echo "ok"
+    else
+      echo "wait-more"
+    fi
+  elif [ $RET -eq 124 ]; then
+    exit 124
+  else
+    echo "wait-more"
+  fi
+}
+
+{% if secured == "yes" %}
+LOOP_COUNT=0
+while [ "$(wait_for_kerberos)" != "ok" ]; do
+  [ $LOOP_COUNT -eq 0 ] && echo -n "Waiting ${SLEEP_TIME}s for Kerberos..." || echo -n "."
+  if [ $((LOOP_COUNT++)) -gt $MAX_LOOP ]; then
+    echo -e "\nERROR *** Waited $LOOP_COUNT times over $((LOOP_COUNT*SLEEP_TIME))s for Kerberos to be live and gave up."
+    exit 123
+  fi
+  sleep $SLEEP_TIME
+done
+{% endif %}
+

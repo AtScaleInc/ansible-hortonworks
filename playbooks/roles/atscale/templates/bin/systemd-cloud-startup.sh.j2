@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# we start tee in the background
+# redirecting its output to the stdout of the script
+{ coproc tee { tee "{{ logs_dir }}/$(basename $0).log" ;} >&3 ;} 3>&1
+# we redirect stding and stdout of the script to our coprocess
+exec >&${tee[1]} 2>&1
+
+ENGINE_MEM=$(awk '/MemTotal:/{print int((($2/1024)-4096)*0.6)}' /proc/meminfo)
+echo "Calculated engine memory: $ENGINE_MEM"
+if [[ "$ENGINE_MEM" =~ ^[[:digit:]]+$ ]]; then
+  if [ "$ENGINE_MEM" -gt 31744 ]; then
+    ENGINE_MEM=31744
+  elif [ "$ENGINE_MEM" -lt 1024 ]; then
+    ENGINE_MEM=1024
+  fi
+
+  {{ image_util_dir }}/set-atscale-param.sh "engine" "xmx" "${ENGINE_MEM}M"
+else
+  echo "*** Something is not right with the calculated memory, leaving default."
+fi
+
+sudo -u {{ atscale_user }} {{ atscale_install_target }}/bin/atscale_start
+
+sudo -u {{ atscale_user }} {{ image_util_dir }}/wait-for-postgres.sh
+
+{{ image_util_dir }}/wait-for-atscale.sh
+
+{% if build_target == "gcp" %}
+
+EXT_HOSTNAME=$(curl -f -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip|sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)/\4.\3.\2.\1.bc.googleusercontent.com/')
+
+echo "Configuring atscale with: $EXT_HOSTNAME"
+
+sudo -u atscaler $(dirname $0)/set-hostname.sh "$EXT_HOSTNAME"
+
+sudo -u {{ atscale_user }} {{ image_util_dir }}/wait-for-postgres.sh
+
+if [ ! -f "{{ image_util_dir }}/meta.password-is-set" ]; then
+  EXT_PASSWORD=$(curl -f -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/atscale_user_password)
+
+  if [ ! -z "$EXT_PASSWORD" ]; then
+    echo "Resetting atscale admin password"
+    sudo -u atscaler $(dirname $0)/set-password.sh "admin" "$EXT_PASSWORD"
+    touch "{{ image_util_dir }}/meta.password-is-set"
+  fi
+fi
+
+{% elif build_target == "aws" %}
+
+EXT_HOSTNAME=$(curl -s -f http://169.254.169.254/latest/meta-data/public-hostname)
+if [ $? -ne 0 ]; then
+  # Couldn't get public hostname, let's use the local hostname instead
+  EXT_HOSTNAME=$(curl -s -f http://169.254.169.254/latest/meta-data/local-hostname)
+fi
+
+echo "Configuring atscale with: $EXT_HOSTNAME"
+
+sudo -u atscaler $(dirname $0)/set-hostname.sh "$EXT_HOSTNAME"
+
+sudo -u {{ atscale_user }} {{ image_util_dir }}/wait-for-postgres.sh
+
+if [ ! -f "{{ image_util_dir }}/meta.password-is-set" ]; then
+  EXT_PASSWORD=$(curl -s -f http://169.254.169.254/latest/meta-data/instance-id)
+
+  if [ ! -z "$EXT_PASSWORD" ]; then
+    echo "Resetting atscale admin password"
+    sudo -u atscaler $(dirname $0)/set-password.sh "admin" "$EXT_PASSWORD"
+    touch "{{ image_util_dir }}/meta.password-is-set"
+  fi
+fi
+
+{% endif %}
+
+exit 0

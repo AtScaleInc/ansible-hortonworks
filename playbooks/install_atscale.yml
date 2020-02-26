@@ -1,0 +1,9 @@
+---
+- import_playbook: "set_atscale_variables.yml"
+
+- name: Apply the atscale role to the atscale-server group
+  hosts: atscale-server
+  any_errors_fatal: true
+  become: yes
+  roles:
+    - atscale

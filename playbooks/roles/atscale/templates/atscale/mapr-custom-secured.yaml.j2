@@ -1,0 +1,77 @@
+---
+as_atscale_host: {{ atscale_public_server_name }}
+as_preview_enabled: 'true'
+as_default_schema: atscale
+is_silent: 'true'
+as_skip_first_time_setup_dialog: 'true'
+as_install_sample_data: 'false'
+as_install_sample_data_omniture: 'true'
+as_target_env: other
+as_distro: MAPR
+as_sub_distro: Unknown
+is_adls: 'false'
+as_use_rpms: 'false'
+as_hive_flavor: atscale-sparksql
+as_hive_flavor_batch: atscale-hive
+as_hive_host_interactive: 127.0.0.1
+as_hive_port_interactive: '10510'
+as_hive_user_interactive: {{ atscale_user }}
+as_hive_password_interactive: ''
+as_hive_host_batch: 127.0.0.1
+as_hive_port_batch: '10511'
+as_hive_user_batch: {{ atscale_user }}
+as_hive_password_batch: ''
+as_install_directory: "{{ atscale_install_target }}"
+as_local_host: {{ atscale_public_server_name }}
+as_engine_memory: 1G
+as_hadoop_common_home: "{{ hadoop_home }}"
+as_hadoop_libexec: "{{ hadoop_home }}/libexec"
+as_hdfs_home: "{{ hdfs_home }}"
+as_hadoop_conf_dir: "{{ hadoop_conf_dir }}"
+as_hive_conf_dir: "{{ hive_conf_dir }}"
+as_tez_conf_dir: ''
+as_compute_stats: 'true'
+as_hdfs_root_dir: "{{ atscale_hdfs_home }}/atscale"
+as_ha_enabled: 'false'
+as_ha_node_type: master
+as_ha_node_number: '1'
+as_ha_postgres_addresses: localhost
+as_ha_cluster_fqdns: {{ atscale_public_server_name }}
+hll_enabled: 'true'
+hll_create_jar: 'true'
+as_drill_to_raw_query_limit_optional: 'false'
+as_license_file: "{{ atscale_home }}/dev-vm-license.json"
+as_license_source: atscale
+lzo_jar_location: "{{ hadoop_home }}/hadoop/lib/hadoop-lzo-*-javadoc.jar"
+as_hive_metastore_database: 'false'
+ruby_bin: "/tmp/puppet/embedded/bin/ruby"
+hadoop_classpath: "{{ hadoop_conf_dir }}:{{ hadoop_home }}/lib/*:{{ hadoop_home }}/.//*:{{ hdfs_home }}/./:{{ hdfs_home }}/lib/*:{{ hdfs_home }}/.//*:{{ yarn_home }}/lib/*:{{ yarn_home }}/.//*:{{ hadoop_home }}/../hadoop-mapreduce/lib/*:{{ hadoop_home }}/../hadoop-mapreduce/.//*:{{ hadoop_home }}/contrib/capacity-scheduler/*.jar:{{ hadoop_home }}/../tez/*:{{ hadoop_home }}/../tez/lib/*:{{ hadoop_home }}/../tez/conf"
+as_namenode: ''
+thrifty_client_protocol: cloudera
+as_auth_host: ''
+has_custom_truststore: ''
+mapr_version: 6.1.0
+mapr_native_security_enabled: 'true'
+as_hive_queue: default
+as_hive_scratchdir: ''
+as_hive_warehouse: ''
+as_spark_queue: default
+as_spark_mem: 1G
+as_spark_cores: '1'
+as_spark_workers: '1'
+compute_stats_disabled: ''
+
+as_secure_installation: 'true'
+as_is_kerberized: 'true'
+
+as_atscale_host_cert: "{{ tls_certificate_dir }}/san-docker.infra.atscale.com.cert.pem"
+as_atscale_host_key: "{{ tls_certificate_dir }}/san-docker.infra.atscale.com.key.pem"
+as_kerberos_client_principal: atscaler/{{ hostname_atscale_node_1 }}@DOCKER.INFRA.ATSCALE.COM
+as_kerberos_client_keytab_location: "/keytabs/atscaler.keytab"
+as_kerberos_hive_principal_batch: atscaler/{{ hostname_atscale_node_1 }}@DOCKER.INFRA.ATSCALE.COM
+as_kerberos_hive_principal_keytab_batch: "/keytabs/atscaler.keytab"
+as_kerberos_hive_principal_interactive: atscaler/{{ hostname_atscale_node_1 }}@DOCKER.INFRA.ATSCALE.COM
+as_kerberos_hive_principal_keytab_interactive: "/keytabs/atscaler.keytab"
+as_kerberos_hive_metastore_principal: "hive/{{ hostname_hadoop }}@DOCKER.INFRA.ATSCALE.COM"
+as_hdfs_name_node_kerberos_principal: "mapr/{{ mapr_cluster_name }}@DOCKER.INFRA.ATSCALE.COM"
+as_hdfs_use_tls: 'true'

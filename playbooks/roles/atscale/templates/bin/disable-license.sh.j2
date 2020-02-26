@@ -1,0 +1,6 @@
+#!/bin/bash
+
+{{ atscale_install_target }}/current/bin/database/postgres_psql -f <( cat<<ENDL
+update licenses set value = '{"license":{"client_id":"invalid","expires":0,"source":"atscale","nodes":0},"signature":"disabled install upload a valid license"}';
+ENDL
+)

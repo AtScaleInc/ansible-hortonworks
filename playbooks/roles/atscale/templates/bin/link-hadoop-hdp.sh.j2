@@ -1,0 +1,19 @@
+#!/bin/bash
+
+rm -rf /usr/hdp
+
+ln -sf /hadoop-shared/hdp /usr/hdp
+
+ln -sf /hadoop-shared/hdp/current/hive-client/bin/beeline /usr/bin/beeline
+ln -sf /hadoop-shared/hdp/current/hadoop-client/bin/hadoop /usr/bin/hadoop
+ln -sf /hadoop-shared/hdp/current/hadoop-hdfs-client/bin/hdfs /usr/bin/hdfs
+ln -sf /hadoop-shared/hdp/current/hive-client/bin/hive /usr/bin/hive
+ln -sf /hadoop-shared/hdp/current/hadoop-yarn-client/bin/yarn /usr/bin/yarn
+
+[ ! -d /etc/hadoop ] && mkdir /etc/hadoop
+ln -sf /hadoop-shared/etc/hadoop/conf /etc/hadoop/conf
+
+[ ! -d /etc/hive ] && mkdir /etc/hive
+ln -sf /hadoop-shared/etc/hive/conf /etc/hive/conf
+
+exit 0

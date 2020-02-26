@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Fakes the output of: hdp-select versions
+
+hadoop version | sed -n '/^Hadoop /{s/Hadoop [0-9]*\.[0-9]*\.[0-9]*\.\([0-9.-]*\)/\1/; p}'

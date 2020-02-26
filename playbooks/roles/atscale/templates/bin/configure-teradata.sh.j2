@@ -1,0 +1,99 @@
+#!/bin/bash
+
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+AS_SECURED="yes"
+{% else %}
+{% set protocol = "http" %}
+{% endif %}
+
+PLATFORM_VERSION=$1
+
+ATSCALE_USER=${ATSCALE_USER:-admin}
+ATSCALE_PASSWORD=${ATSCALE_PASSWORD:-admin}
+ATSCALE_ENGINE=${ATSCALE_ENGINE:-localhost}
+ATSCALE_ENGINE_PORT=${ATSCALE_ENGINE_PORT:-10502}
+ATSCALE_MODELER=${ATSCALE_MODELER:-localhost}
+ATSCALE_MODELER_PORT=${ATSCALE_MODELER_PORT:-10500}
+ORG_ID=${ORG_ID:-default}
+CURRENT_NODE="$(hostname -f | sed 's/.*-node-0\([0-9]\).*/\1/')"
+
+JWT=$(curl -k -X GET -u $ATSCALE_USER:$ATSCALE_PASSWORD "{{ protocol }}://$ATSCALE_MODELER:$ATSCALE_MODELER_PORT/$ORG_ID/auth")
+
+source {{ image_util_dir }}/dbdrivers.sh
+
+create_connection_group() {
+        json=$1
+        CONNECTION_GROUP_ID=$(curl -v -k -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID -d "$json" | tr -d [:cntrl:] | sed 's/.*"id" : "\([^"]*\)".*/\1/')
+        echo "connection group created"
+}
+
+create_connection_subgroup() {
+        json=$1
+        curl -v -k -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID/connection-group/$CONNECTION_GROUP_ID -d "$json"
+        echo "connection sub group created"
+        echo $(curl -v -k -X GET -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID/connection-group/$CONNECTION_GROUP_ID/status)
+}
+
+for i in `seq 1 3`; do install_teradata_driver && break || sleep 5; done
+[ $? -ne 0 ] && failed "Failed to install teradata driver."
+
+NAME=${NAME:-Teradata}
+
+GROUP_DATABASE=atscale
+GROUP_DEFAULT_SCHEMA=as_adventure
+GROUP_CONN_ID=${GROUP_CONN_ID:-$2}
+
+SUBGROUP_CONNECTOR_TYPE=teradata
+
+if [ "$AS_SECURED" == "yes" ]; then
+  SUBGROUP_HOSTS="bos-teradata-node-02.corptest.infra.atscale.com"
+  SUBGROUP_PASSWORD=@scale105
+elif [ "$PLATFORM_VERSION" == "16.20_boston" ]; then
+  SUBGROUP_HOSTS="teradata-16-20-bos.infra.atscale.com"
+  SUBGROUP_PASSWORD=dbc
+else
+  SUBGROUP_HOSTS="ec2-34-208-188-99.us-west-2.compute.amazonaws.com"
+  SUBGROUP_PASSWORD=@scale105
+fi
+SUBGROUP_PORT=1025
+SUBGROUP_USERNAME=dbc
+SUBGROUP_EXTRA_PROPERTIES={}
+
+FEDERATED_WRITE_TYPE=${FEDERATED_WRITE_TYPE:-never}
+
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME",
+  "connectionId":"$GROUP_CONN_ID",
+  "database": "$GROUP_DATABASE",
+  "aggregateSchema":"$GROUP_DEFAULT_SCHEMA",
+  "subgroups":[],
+  "filesystemType": "",
+  "extraProperties": {
+    "udafMode":"customer_managed",
+    "udafSchema": "$GROUP_DATABASE"
+  }
+}
+ENDL
+)
+
+if [ "$CURRENT_NODE" == "1" ]; then
+  create_connection_group "$JSON"
+fi
+
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME Connection",
+  "connectorType": "$SUBGROUP_CONNECTOR_TYPE",
+  "hosts": "$SUBGROUP_HOSTS",
+  "port": $SUBGROUP_PORT,
+  "username": "$SUBGROUP_USERNAME",
+  "password": "$SUBGROUP_PASSWORD",
+  "extraProperties": $SUBGROUP_EXTRA_PROPERTIES,
+  "queryRoles": ["large_user_query_role", "small_user_query_role", "system_query_role"]
+}
+ENDL
+)
+
+if [ "$CURRENT_NODE" == "1" ]; then
+  create_connection_subgroup "$JSON"
+fi

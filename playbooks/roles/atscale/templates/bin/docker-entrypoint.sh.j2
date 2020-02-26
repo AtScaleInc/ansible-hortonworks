@@ -1,0 +1,513 @@
+#!/bin/bash
+
+# we start tee in the background
+# redirecting its output to the stdout of the script
+{ coproc tee { tee "{{ logs_dir }}/$(basename $0).log" ;} >&3 ;} 3>&1
+# we redirect stding and stdout of the script to our coprocess
+exec >&${tee[1]} 2>&1
+
+echo "Called with: $*"
+
+ENTRY_POINT_GATE=/tmp/entry_point_gate
+[ -f $ENTRY_POINT_GATE ] && rm -f $ENTRY_POINT_GATE
+
+# Setup shared configuration gate path
+CONFIGURATION_GATE=/mnt/ha-cluster/atscale-configured-gate
+[ -f $CONFIGURATION_GATE ] && rm -f $CONFIGURATION_GATE
+[ ! -d `dirname $CONFIGURATION_GATE` ] && mkdir -p `dirname $CONFIGURATION_GATE`
+
+# Export host IP (also default gateway) as trusted address
+export ATSCALE_TRUSTED_IP=`ip r s|grep -e '^default'|awk '{print $3}'`
+
+# use container_config.sh to override env vars that are defaulted or passed in on the CLI
+if [[ -f "{{ container_mount_dir }}/container_config.sh" ]]; then
+  echo "{{ container_mount_dir }}/container_config.sh found, sourcing it in"
+  source {{ container_mount_dir }}/container_config.sh
+fi
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    --daemon)
+      echo "Will daemonize."
+      DAEMONIZE=1
+      shift 1
+      ;;
+    --engine-memory)
+      echo "Setting engine xmx: $2"
+      {{ image_util_dir }}/set-atscale-param.sh "engine" "xmx" "${2}M"
+      shift 2
+      ;;
+    --virtualization-supervisor-memory)
+      echo "Setting virtualization supervisor memory: $2"
+      {{ image_util_dir }}/set-atscale-param.sh "virtualization-supervisor" "memory" "${2}M"
+      shift 2
+      ;;
+    --virtualization-supervisor-cores)
+      echo "Setting virtualization supervisor cores: $2"
+      {{ image_util_dir }}/set-atscale-param.sh "virtualization-supervisor" "cores" "${2}"
+      shift 2
+      ;;
+    --virtualization-worker-memory)
+      echo "Setting virtualization worker memory: $2"
+      {{ image_util_dir }}/set-atscale-param.sh "virtualization-worker" "memory" "${2}M"
+      shift 2
+      ;;
+    --virtualization-worker-cores)
+      echo "Setting virtualization worker cores: $2"
+      {{ image_util_dir }}/set-atscale-param.sh "virtualization-worker" "cores" "${2}"
+      shift 2
+      ;;
+    --virtualization-listener-memory)
+      echo "Setting virtualization listener memory: $2"
+      {{ image_util_dir }}/set-atscale-param.sh "virtualization-listener" "memory" "${2}M"
+      shift 2
+      ;;
+    --virtualization-listener-cores)
+      echo "Setting virtualization listener cores: $2"
+      {{ image_util_dir }}/set-atscale-param.sh "virtualization-listener" "cores" "${2}"
+      shift 2
+      ;;
+    --platform)
+      PLATFORM="$2"
+      [ $2 == 'mapr' ] && PLATFORM_MAPR='yes'
+      [ $2 == 'teradata' ] && PLATFORM_TERADATA='yes'
+      shift 2
+      ;;
+    --platform-version)
+      PLATFORM_VERSION="$2"
+      shift 2
+      ;;
+    -p[0-9]*|--platform[0-9]*)
+      n=`echo "$1"|grep -o -E '[0-9]+'`
+      PLATFORMS="${PLATFORMS}$n $2\n"
+      [ $2 == 'mapr' ] && PLATFORM_MAPR='yes'
+      [ $2 == 'teradata' ] && PLATFORM_TERADATA='yes'
+      [ $2 == 'oracle' ] && PLATFORM_ORACLE='yes'
+      shift 2
+      ;;
+    -pv[0-9]*|--platform-version[0-9]*)
+      n=`echo "$1"|grep -o -E '[0-9]+'`
+      PLATFORM_VERSIONS="${PLATFORM_VERSIONS}$n $2\n"
+      shift 2
+      ;;
+    --as-sql-interactive)
+      AS_SQL_INTERACTIVE="$2"
+      shift 2
+      ;;
+    --as-sql-interactive[0-9]*)
+      n=`echo "$1"|grep -o -E '[0-9]+'`
+      export AS_SQL_INTERACTIVE_ARRAY="${AS_SQL_INTERACTIVE_ARRAY}$n $2\n"
+      shift 2
+      ;;
+    --as-sql-batch)
+      AS_SQL_BATCH="$2"
+      shift 2
+      ;;
+    --as-sql-batch[0-9]*)
+      n=`echo "$1"|grep -o -E '[0-9]+'`
+      export AS_SQL_BATCH_ARRAY="${AS_SQL_BATCH_ARRAY}$n $2\n"
+      shift 2
+      ;;
+    --redshift-config)
+      REDSHIFT_CONFIG="$2"
+      shift 2
+      ;;
+    --postgres-config)
+      POSTGRES_CONFIG="$2"
+      shift 2
+      ;;
+    --snowflake-config)
+      SNOWFLAKE_CONFIG="$2"
+      shift 2
+      ;;
+    --bigquery-credentials)
+      BIGQUERY_CREDENTIALS="$2"
+      shift 2
+      ;;
+    --bigquery-bucket)
+      BIGQUERY_BUCKET="$2"
+      shift 2
+      ;;
+    --secured)
+      SECURED="yes"
+      shift 1
+      ;;
+    --as-ha)
+      AS_HA="yes"
+      shift 1
+      ;;
+    -vdev|--as-virtualization-dev)
+      export AS_VIRTUALIZATION_DEV="yes"
+      shift 1
+      ;;
+    -vconf|--as-virtualization-configured)
+      export AS_VIRTUALIZATION_CONF="yes"
+      shift 1
+      ;;
+    -vlarge|--as-virtualization-large)
+      export AS_VIRTUALIZATION_LARGE="yes"
+      shift 1
+      ;;
+    -vlargeconf|--as-virtualization-large-configured)
+      export AS_VIRTUALIZATION_LARGE_CONF="yes"
+      shift 1
+      ;;
+    --as-virtualization-jenkins)
+      export AS_VIRTUALIZATION_JENKINS="yes"
+      shift 1
+      ;;
+    --as-virtualization)
+      export AS_VIRTUALIZATION="yes"
+      shift 1
+      ;;
+    --enable-impersonation)
+      ENABLE_IMPERSONATION="yes"
+      shift 1
+      ;;
+    --load-security-data)
+      LOAD_SECURITY_DATA="yes"
+      shift 1
+      ;;
+    --keep-state)
+      KEEP_STATE="yes"
+      shift 1
+      ;;
+    --use-ad)
+      USE_AD="yes"
+      shift 1
+      ;;
+    --connector-type)
+      CONNECTOR_TYPE="$2"
+      shift 2
+      ;;
+    --disable-jdbc-ssl)
+      DISABLE_JDBC="true"
+      shift 1
+      ;;
+    *)
+      echo "ERROR - '$1' is not a supported argument"
+      # If there is an error, just ignore it
+      shift 1
+      ;;
+  esac
+done
+
+if [ ! -z "${PLATFORMS}" ]; then
+  PLATFORMS_SORTED=`echo -e "${PLATFORMS}"|sort`
+  PLATFORM_VERSIONS_SORTED=`echo -e "${PLATFORM_VERSIONS}"|sort`
+  PLATFORMS_MAPPING=`join <(echo -e "${PLATFORMS_SORTED}") <(echo -e "${PLATFORM_VERSIONS_SORTED}") | awk 'NF'`
+fi
+
+export IS_COMPUTE=`hostname -f | sed 's/\(compute\)\-node\-.*/yes/'`
+
+# Compute nodes start after the AtScale node completes its startup
+if [ "$IS_COMPUTE" == "yes" ]; then
+  RET=-1
+  while [ $RET -ne 0 ]; do
+    [ $RET -ne -1 ] && echo "*** WARNING: AtScale node is not coming up!"
+    {{ image_util_dir }}/wait-for-atscale.sh
+    RET=$?
+  done
+fi
+
+function load_security_data() {
+  if [ "$SECURED" == "yes" ]; then
+    if [ "$LOAD_SECURITY_DATA" == "yes" ]; then
+      echo "Waiting to load test data"
+      {{ image_util_dir }}/wait-for-pool.sh
+
+      echo "Loading sample data"
+      {{ image_util_dir }}/load-test-data.sh
+    fi
+  fi
+}
+
+# Configure each platform
+function configure_platform() {
+    PLATFORM_IDX=`echo $1|awk '{print $1}'`
+    PLATFORM=`echo $1|awk '{print $2}'`
+    PLATFORM_VERSION=`echo $1|awk '{print $3}'`
+    connectionId="con${PLATFORM_IDX}"
+    case $PLATFORM in
+      cdh|hdp|mapr)
+
+        dataWarehouseName="Hadoop Data Warehouse"
+        interactiveQueryRoles="[\"small_user_query_role\", \"large_user_query_role\"]"
+        batchQueryRoles="[\"system_query_role\"]"
+
+        if [ "$SECURED" == "yes" ]; then
+          {{ image_util_dir }}/configure-dns-resolver.sh
+          kerbPrincipal={{krb_realm}}
+          rpcProtection="privacy"
+        else
+          kerbPrincipal=""
+          rpcProtection="authentication"
+        fi
+
+        echo "Set up Hadoop Data Warehouse"
+        sudo -u {{ atscale_user }} {{ image_util_dir }}/create-data-warehouse.sh "$dataWarehouseName" "$connectionId"
+
+        if [ ! -z "${AS_SQL_BATCH_ARRAY}" ]; then
+          AS_SQL_BATCH=`echo -e "${AS_SQL_BATCH_ARRAY}"|grep -e "^$PLATFORM_IDX\s"|awk '{print $2}'`
+        fi
+        if [ ! -z "${AS_SQL_INTERACTIVE_ARRAY}" ]; then
+          AS_SQL_INTERACTIVE=`echo -e "${AS_SQL_INTERACTIVE_ARRAY}"|grep -e "^$PLATFORM_IDX\s"|awk '{print $2}'`
+        fi
+
+        echo "Setting interactive sql engine: $AS_SQL_INTERACTIVE"
+        sudo -u {{ atscale_user }} {{ image_util_dir }}/set-sql-engine.sh "interactive" "$PLATFORM" "$PLATFORM_VERSION" "$AS_SQL_INTERACTIVE" "$dataWarehouseName" "$connectionId" "$CONNECTOR_TYPE" "$kerbPrincipal" "$rpcProtection" "$interactiveQueryRoles" "$DISABLE_JDBC"
+
+        echo "Setting batch sql engine: $AS_SQL_BATCH"
+        sudo -u {{ atscale_user }} {{ image_util_dir }}/set-sql-engine.sh "batch" "$PLATFORM" "$PLATFORM_VERSION" "$AS_SQL_BATCH" "$dataWarehouseName" "$connectionId" "$CONNECTOR_TYPE" "$kerbPrincipal" "$rpcProtection" "$batchQueryRoles" "$DISABLE_JDBC"
+
+        echo "Update Engine Settings for Connection Pool (NOTE: This impacts Hive performance)"
+        sudo -u {{ atscale_user }} {{ image_util_dir }}/set-engine-setting.sh 'connection.pool.idleConnectionDuration' '30s'
+
+        echo "Restarting engine"
+        sudo -u {{ atscale_user }} {{ atscale_install_target }}/bin/atscale_service_control restart engine
+
+        load_security_data
+      ;;
+
+      redshift)
+        REDSHIFT_ENV_VARS=$(echo "$REDSHIFT_CONFIG"| grep "REDSHIFT_.*=")
+        # Setting vars in a subshell so they don't persist outside of it
+        (
+          IFS=$'\n'
+          for v in $REDSHIFT_ENV_VARS; do
+            eval "export $v"
+          done
+          unset IFS
+
+          sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-redshift.sh "$connectionId"
+        )
+      ;;
+
+      postgres)
+        POSTGRES_ENV_VARS=$(echo "$POSTGRES_CONFIG"| grep "POSTGRES_.*=")
+        # Setting vars in a subshell so they don't persist outside of it
+        (
+          IFS=$'\n'
+          for v in $POSTGRES_ENV_VARS; do
+            eval "export $v"
+          done
+          unset IFS
+
+          sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-postgres.sh "$connectionId"
+        )
+      ;;
+
+      snowflake)
+        SNOWFLAKE_ENV_VARS=$(echo "$SNOWFLAKE_CONFIG"| grep "SNOWFLAKE_.*=")
+        # Setting vars in a subshell so they don't persist outside of it
+        (
+          IFS=$'\n'
+          for v in $SNOWFLAKE_ENV_VARS; do
+            eval "export $v"
+          done
+          unset IFS
+
+          sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-snowflake.sh "$connectionId"
+        )
+      ;;
+
+      bigquery)
+        export BIGQUERY_CREDENTIALS
+        export BIGQUERY_BUCKET
+        sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-bigquery.sh "$connectionId"
+      ;;
+
+      teradata)
+        sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-teradata.sh "$PLATFORM_VERSION" "$connectionId"
+        load_security_data
+      ;;
+
+      db2)
+        sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-db2.sh "$PLATFORM_VERSION" "$connectionId"
+      ;;
+
+      presto)
+        sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-presto.sh "$connectionId"
+      ;;
+
+      oracle)
+        sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-oracle.sh "$PLATFORM_VERSION" "$connectionId"
+        load_security_data
+      ;;
+      mssql)
+        sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-mssql.sh "$PLATFORM_VERSION" "$connectionId"
+      ;;
+
+      other)
+        if [ ! -z "${AS_SQL_BATCH_ARRAY}" ]; then
+          AS_SQL_BATCH=`echo -e "${AS_SQL_BATCH_ARRAY}"|grep -e "^$PLATFORM_IDX\s"|awk '{print $2}'`
+        fi
+        [ -e "{{ image_util_dir }}/configure-${AS_SQL_BATCH}.sh" ] && sudo -u {{ atscale_user }} -E {{ image_util_dir }}/configure-${AS_SQL_BATCH}.sh "$connectionId"
+      ;;
+      *)
+        echo "Unknown platform ($PLATFORM)."
+      ;;
+    esac
+
+}
+
+echo "Starting system daemons"
+{{ image_util_dir }}/start-000-daemons.sh
+
+# Touching logfiles to prevent supervisor from randomly crashing on OSX
+# Would fail with: IOError: [Errno 4] Interrupted system call: '/path/to/some/logfile'
+find {{ atscale_install_target }}/log -type f -exec touch {} \;
+
+if [ "$PLATFORM_TERADATA" == "yes" ]; then
+    #TODO: remove installation of unzip once INFRA-788 is resolved
+    yum install -y unzip
+fi
+
+if [ "$IS_COMPUTE" == "yes" ]; then
+  echo "PLATFORMS MAPPING:"
+  echo -e "${PLATFORMS_MAPPING}"
+  
+  source {{ image_util_dir }}/dbdrivers.sh
+
+  IFS=$'\n'
+  for LINE in ${PLATFORMS_MAPPING}; do
+    [ "$LINE" == "\n" ] && continue
+    PLATFORM=`echo $LINE|awk '{print $2}'`
+    if [ "$PLATFORM" == "teradata" ]; then
+        install_teradata_driver
+    elif [ "$PLATFORM" == "oracle" ]; then
+        install_oracle_driver
+    fi
+  done
+  unset IFS
+fi
+
+CURRENT_NODE="$(hostname -f | sed 's/.*-node-0\([0-9]\).*/\1/')"
+
+# supervisor.sock can't run on the shared mount, so when running with that mode move the sock to be in /tmp
+if [ "$KEEP_STATE" == "yes" ]; then
+  sed -i\.bk 's#{{ atscale_install_target }}/data/supervisor.sock#/tmp/atscale-supervisor.sock#g' {{ atscale_install_target }}/versions/{{ as_version }}/conf/supervisor/supervisor.conf
+  sed -i\.bk 's#{{ '{{ atscale_data_location }}' }}/supervisor.sock#/tmp/supervisor.sock#g' {{ atscale_install_target }}/versions/{{ as_version }}/templates/supervisor/supervisor.conf.template
+fi
+
+# Make sure MapR Ticket is in place before we install
+if [ "$PLATFORM_MAPR" == "yes" ] && [ "$SECURED" == "yes" ]; then
+echo "Waiting on MapR Secure Ticket"
+{{ image_util_dir }}/wait-for-mapr-ticket.sh
+fi
+
+{{ image_util_dir }}/wait-for-kerberos.sh
+
+# Block node 2 until configuration on node 1 completes
+if [ "$CURRENT_NODE" == "2" ]; then
+  rm -rf {{ atscale_install_target }}/data/coordinator/*
+  rm -rf {{ atscale_install_target }}/data/database/*
+
+  echo "Waiting for Node 1 Configuration to Complete"
+  {{ image_util_dir }}/wait-for-configuration.sh
+fi
+
+echo "Applying configuration and starting atscale..."
+sudo -u {{ atscale_user }} {{ atscale_install_target }}/versions/{{ as_version }}/bin/configurator.sh --apply --automatic-install
+
+# We shouldn't need to do this, but we cannot get docker to take an environment variable
+if [ "$PLATFORM_MAPR" == "yes" ] && [ "$SECURED" == "yes" ]; then
+echo "Applying MapR Configuration to service_wrapper"
+sed -i '/export AS_DEV_MODE=true/a export MAPR_TICKETFILE_LOCATION=/tmp/maprticket_0' /opt/atscale/current/bin/engine/service_wrapper
+fi
+
+# Only do atscale configuration on node 1
+if [ "$CURRENT_NODE" == "1" ]; then
+  sudo -u {{ atscale_user }} {{ image_util_dir }}/wait-for-postgres.sh
+
+  {{ image_util_dir }}/wait-for-atscale.sh
+
+  {{ image_util_dir }}/wait-for-modeler.sh
+
+  {{ image_util_dir }}/wait-for-license.sh
+
+  echo "Loading AtScale license key"
+  cat /tmp/license.json | {{ image_util_dir }}/load-license.sh
+  sleep 3
+
+  echo "Setting up default Organization"
+  sudo -u {{ atscale_user }} {{ image_util_dir }}/initialize-organization.sh
+
+  if [ ! -f "{{ atscale_install_target }}/meta.sql.engine.configured" ]; then
+    touch {{ atscale_install_target }}/meta.sql.engine.configured
+
+    if [ "$AS_HA" == "yes" ] || [ "$USE_AD" == "yes" ]; then
+      DIRECTORY_TYPE="ad"
+      USER_NAME_SUFFIX=""
+    else
+      DIRECTORY_TYPE="embedded"
+      USER_NAME_SUFFIX="@CORPTEST.INFRA.ATSCALE.COM"
+    fi
+
+    echo "Configure Directory"
+    sudo -u {{ atscale_user }} {{ image_util_dir }}/configure-directory.sh "$DIRECTORY_TYPE"
+
+    echo "Adding Group Mappings"
+    sudo -u {{ atscale_user }} {{ image_util_dir }}/update-group-mappings.sh
+
+    echo "Create Test Users"
+    sudo -u {{ atscale_user }} {{ image_util_dir }}/create-test-user.sh {{ user_a_user }} ""
+    sudo -u {{ atscale_user }} {{ image_util_dir }}/create-test-user.sh {{ user_b_user }} ""
+    sudo -u {{ atscale_user }} {{ image_util_dir }}/create-test-user.sh {{ user_tableau_server }} ""
+    sudo -u {{ atscale_user }} {{ image_util_dir }}/create-test-user.sh {{ user_all_user }} "$USER_NAME_SUFFIX"
+    sudo -u {{ atscale_user }} {{ image_util_dir }}/create-test-user.sh {{ user_fact_user }} "$USER_NAME_SUFFIX"
+    sudo -u {{ atscale_user }} {{ image_util_dir }}/create-test-user.sh {{ user_related_user }} "$USER_NAME_SUFFIX"
+
+    echo "PLATFORMS MAPPING:"
+    echo -e "${PLATFORMS_MAPPING}"
+
+    if [ -z "$PLATFORMS_MAPPING" ]; then
+      configure_platform "1 $PLATFORM $PLATFORM_VERSION"
+    else
+      IFS=$'\n'
+      for LINE in ${PLATFORMS_MAPPING}; do
+        echo "Configuring platform $LINE"
+        [ "$LINE" == "\n" ] && continue
+        configure_platform $LINE
+        {{ image_util_dir }}/wait-for-atscale.sh
+      done
+      unset IFS
+    fi
+  fi
+
+  touch $CONFIGURATION_GATE
+fi
+
+if [ "$CURRENT_NODE" == "2" ]; then
+
+  echo "Waiting for Node 1 Configuration to Complete"
+  {{ image_util_dir }}/wait-for-configuration.sh
+
+  if [ -z "$PLATFORMS_MAPPING" ]; then
+    configure_platform "1 $PLATFORM $PLATFORM_VERSION"
+  else
+    IFS=$'\n'
+    for LINE in ${PLATFORMS_MAPPING}; do
+      echo "Configuring platform $LINE"
+      [ "$LINE" == "\n" ] && continue
+      configure_platform $LINE
+    done
+    unset IFS
+  fi
+  echo "Restarting Engine on Node 2"
+  sudo -u {{ atscale_user }} {{ atscale_install_target }}/bin/atscale_service_control restart engine
+fi
+
+touch $ENTRY_POINT_GATE
+
+####
+# finish up
+####
+if [[ ! -z "$DAEMONIZE" ]]; then
+  # hack to daemonize this script, preventing the docker container from exiting
+  tail -f /dev/null
+else
+  # run what was passed in via docker run's COMMAND attribute
+  exec "$@"
+fi

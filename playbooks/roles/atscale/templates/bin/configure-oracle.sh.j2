@@ -1,0 +1,127 @@
+#!/bin/bash
+
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+{% else %}
+{% set protocol = "http" %}
+{% endif %}
+
+ATSCALE_USER=${ATSCALE_USER:-admin}
+ATSCALE_PASSWORD=${ATSCALE_PASSWORD:-admin}
+ATSCALE_ENGINE=${ATSCALE_ENGINE:-localhost}
+ATSCALE_ENGINE_PORT=${ATSCALE_ENGINE_PORT:-10502}
+ATSCALE_MODELER=${ATSCALE_MODELER:-localhost}
+ATSCALE_MODELER_PORT=${ATSCALE_MODELER_PORT:-10500}
+ORG_ID=${ORG_ID:-default}
+CURRENT_NODE="$(hostname -f | sed 's/.*-node-0\([0-9]\).*/\1/')"
+PLATFORM_VERSION=$1
+
+JWT=$(curl -k -X GET -u $ATSCALE_USER:$ATSCALE_PASSWORD "{{ protocol }}://$ATSCALE_MODELER:$ATSCALE_MODELER_PORT/$ORG_ID/auth")
+
+###Install Oracle jdbc driver 
+
+source {{ image_util_dir }}/dbdrivers.sh
+
+for i in `seq 1 3`; do install_oracle_driver && break || sleep 5; done
+[ $? -ne 0 ] && failed "Couldn't install oracle driver"
+
+create_connection_group() {
+        json=$1
+        echo "json now"
+        echo $json
+        echo "end json now"
+        CONNECTION_GROUP_ID=$(curl -v -k -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID -d "$JSON" | tr -d [:cntrl:] | sed 's/.*"id" : "\([^"]*\)".*/\1/')
+        echo "connection group created"
+}
+
+create_connection_subgroup() {
+        json=$1
+        curl -v -k -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID/connection-group/$CONNECTION_GROUP_ID -d "$JSON"
+        echo "connection sub group created"
+        echo $(curl -v -k -X GET -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID/connection-group/$CONNECTION_GROUP_ID/status)
+}
+
+NAME="Oracle"
+
+GROUP_DATABASE=
+GROUP_DEFAULT_SCHEMA=as_adventure
+GROUP_CONN_ID=${GROUP_CONN_ID:-$2}
+GROUP_EXTRA_PROPERTIES="{\"udafSchema\": \"ATSCALEUDAF\", \"udafMode\": \"customer_managed\"}"
+
+SUBGROUP_CONNECTOR_TYPE=oracle
+
+if [ "$PLATFORM_VERSION" == "12c_boston" ]; then
+{% if secured == "yes" %}
+    SUBGROUP_HOSTS=oracle-krb.bos.docker.infra.atscale.com
+{% else %}
+    # Same instance for non-krb/krb for now
+    SUBGROUP_HOSTS=oracle-krb.bos.docker.infra.atscale.com
+{% endif %}
+    SUBGROUP_PORT=1521
+    SUBGROUP_USERNAME=atscale
+    SUBGROUP_PASSWORD=atscale
+    SUBGROUP_EXTRA_JDBC_FLAGS=
+    SUBGROUP_EXTRA_PROPERTIES="{\"sid\": \"ATSCALE\"}"
+elif [ "$PLATFORM_VERSION" == "12.1_boston" ]; then
+{% if secured == "yes" %}
+    SUBGROUP_HOSTS=oracle121.docker.infra.atscale.com
+{% else %}
+    # Same instance for non-krb/krb for now
+    SUBGROUP_HOSTS=oracle121.docker.infra.atscale.com
+{% endif %}
+    SUBGROUP_PORT=1521
+    SUBGROUP_USERNAME=atscale
+    SUBGROUP_PASSWORD=atscale
+    SUBGROUP_EXTRA_JDBC_FLAGS=
+    SUBGROUP_EXTRA_PROPERTIES="{\"sid\": \"ATSCALE\"}"
+else
+{% if secured == "yes" %}
+    SUBGROUP_HOSTS=oracle-krb.docker.infra.atscale.com
+{% else %}
+    SUBGROUP_HOSTS=oracle.infra.atscale.com
+{% endif %}
+    SUBGROUP_PORT=1521
+    SUBGROUP_USERNAME=atscale
+    SUBGROUP_PASSWORD=atscale
+    SUBGROUP_EXTRA_JDBC_FLAGS=
+    SUBGROUP_EXTRA_PROPERTIES="{\"sid\": \"ATSCALE\"}"
+fi
+
+ENV_HIVE_SERVER2_PORT=11119
+
+# dw payload
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME",
+  "connectionId":"$GROUP_CONN_ID",
+  "filesystemType": "",
+  "database": "$GROUP_DATABASE",
+  "aggregateSchema":"$GROUP_DEFAULT_SCHEMA",
+  "subgroups":[],
+  "extraProperties": $GROUP_EXTRA_PROPERTIES
+}
+ENDL
+)
+
+# this sets GROUP_ID for you to use futher down in JSON
+if [ "$CURRENT_NODE" == "1" ]; then
+	  create_connection_group "$JSON"
+fi
+
+# payload to create the engine and attach it to the dw
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME Connection",
+  "connectorType": "$SUBGROUP_CONNECTOR_TYPE",
+  "hosts": "$SUBGROUP_HOSTS",
+  "port": $SUBGROUP_PORT,
+  "username": "$SUBGROUP_USERNAME",
+  "password": "$SUBGROUP_PASSWORD",
+  "extraJdbcFlags": "$SUBGROUP_EXTRA_JDBC_FLAGS",
+  "extraProperties": $SUBGROUP_EXTRA_PROPERTIES,
+  "queryRoles": ["large_user_query_role", "small_user_query_role", "system_query_role"]
+}
+ENDL
+)
+
+if [ "$CURRENT_NODE" == "1" ]; then
+	  create_connection_subgroup "$JSON"
+fi

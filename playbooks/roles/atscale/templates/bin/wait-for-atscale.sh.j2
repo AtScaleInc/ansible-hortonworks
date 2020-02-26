@@ -1,0 +1,37 @@
+#!/bin/bash
+
+WAIT_TIME=30
+SLEEP_TIME=5
+MAX_LOOP=100
+
+[ "$IS_COMPUTE" == "yes" ] && HOST="atscale-node-01" || HOST="localhost"
+
+function wait_for() {
+{% if secured == "yes" %}
+VAL=$(timeout $WAIT_TIME curl -s -k https://$HOST:10502/ping)
+{% else %}
+VAL=$(timeout $WAIT_TIME curl -s http://$HOST:10502/ping)
+{% endif %}
+  RET=$?
+  if [ $RET -eq 0 ] && [ "$VAL" == "OK" ]; then
+    echo "ok"
+  elif [ $RET -eq 124 ]; then
+    exit 124
+  else
+    echo "wait-more"
+  fi
+}
+
+
+LOOP_COUNT=0
+while [ "$(wait_for)" != "ok" ]; do
+  [ $LOOP_COUNT -eq 0 ] && echo -n "Waiting ${SLEEP_TIME}s for AtScale Engine..." || echo -n "."
+  if [ $((LOOP_COUNT++)) -gt $MAX_LOOP ]; then
+    exit 123
+  fi
+  sleep $SLEEP_TIME
+done
+
+[ $LOOP_COUNT -ne 0 ] && echo -e "\nWaited $((LOOP_COUNT*SLEEP_TIME))s for AtScale Engine."
+
+exit 0

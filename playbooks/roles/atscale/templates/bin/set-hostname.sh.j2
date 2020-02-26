@@ -1,0 +1,57 @@
+#!/bin/bash
+
+BASE_DIR={{ atscale_install_target }}
+
+PUBLIC_HOSTNAME="$1"
+LOCALHOST_NAME=$(hostname -f)
+INIT_HOST="{{ atscale_public_server_name }}"
+TICK=$(date +%s)
+
+### Leaving internal hostname alone for now
+
+#echo "Initial hostname: $INIT_HOST"
+#echo "New hostname:     $LOCALHOST_NAME"
+echo "Public hostname:  $PUBLIC_HOSTNAME"
+
+#HAPROXY_PATH=$(find $BASE_DIR -name "haproxy-*" -type d | head -1 )
+#POSTGRES_PATH=$(find $BASE_DIR -name "postgresql-*" -type d | head -1 )
+
+#echo "HAPROXY: $HAPROXY_PATH"
+#echo "POSTGRES: $POSTGRES_PATH"
+
+#while read fn; do
+#  echo "Check: $fn"
+#  grep -cF "$INIT_HOST" "${BASE_DIR}/$fn"
+#  if [ $? -eq 0 ]; then
+#    echo "Fixing: $fn"
+#    cp "${BASE_DIR}/$fn" "${BASE_DIR}/$fn.${TICK}"
+#    sed "s/${INIT_HOST}/${LOCALHOST_NAME}/g" "${BASE_DIR}/$fn.${TICK}" > "${BASE_DIR}/$fn"
+#  fi
+#done <<END
+#apps/modeler/assets/modeler/conf/app.conf
+#apps/account/assets/account/conf/app.conf
+#apps/sidecarserver/assets/sidecarserver/conf/app.conf
+#apps/engine/bin/engine_wrapper.sh
+#apps/engine/conf/bootstrap.conf
+#apps/engine/conf/cluster.conf
+#${HAPROXY_PATH/"$BASE_DIR/"/}/haproxy.cfg
+#${POSTGRES_PATH/"$BASE_DIR/"/}/bin/postgres_wrapper
+#${POSTGRES_PATH/"$BASE_DIR/"/}/bin/standby_setup
+#${POSTGRES_PATH/"$BASE_DIR/"/}/repmgr.conf
+#END
+
+{{ atscale_install_target }}/current/bin/database/postgres_psql -f <( cat<<END
+  update engines set host = '${PUBLIC_HOSTNAME}';
+
+  update engine_settings set value = '${PUBLIC_HOSTNAME}' where name = 'auth.host' and deactivated_at is null;
+  update engine_settings set value = '${PUBLIC_HOSTNAME}' where name = 'atscale.host' and deactivated_at is null;
+
+  update properties set property_value = '${PUBLIC_HOSTNAME}' where property_name = 'account.host';
+  update properties set property_value = '${PUBLIC_HOSTNAME}' where property_name = 'modeler.host';
+  update properties set property_value = '${PUBLIC_HOSTNAME}' where property_name = 'sidecar.host';
+END
+)
+
+# Only need to restart engine since we don't mess with the other config files
+echo "Restarting atscale engine..."
+$BASE_DIR/bin/atscale_service_control restart engine

@@ -1,0 +1,41 @@
+#!/bin/bash
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --bundle)
+      DATALOADER_BUNDLE="-archive $2"
+      shift 2
+    ;;
+    --schema)
+      DATALOADER_SCHEMA="-schema $2"
+      shift 2
+    ;;
+    --noCreate)
+      CREATE_PROJECT="--noCreate $2"
+      shift 2
+    ;;
+    --connId)
+      CONNECTION_ID="--connectionId $2"
+      shift 2
+    ;;
+    *)
+      echo "ERROR *** Unexpected parameter ($1)"
+      exit 1
+    ;;
+  esac
+done
+
+if [ -z "$DATALOADER_BUNDLE" ]; then
+  DATALOADER_BUNDLE="-archive $(find {{ atscale_install_target }}/current/pkg/datasample/ -name "adventure-*.zip" | head -1)"
+  if [ -z "$DATALOADER_SCHEMA" ]; then
+    DATALOADER_SCHEMA="-schema as_adventure"
+  fi
+fi
+
+{% if secured == "yes" %}
+  {% set protocol = "https" %}
+{% else %}
+  {% set protocol = "http" %}
+{% endif %}
+
+{{atscale_install_target}}/current/pkg/dataloader-cli/dataloader installarchive $DATALOADER_SCHEMA -eng={{protocol}}://{{ hostname_atscale }}:10502 -dc={{protocol}}://{{ hostname_atscale }}:10500 $CONNECTION_ID $DATALOADER_BUNDLE $CREATE_PROJECT

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+{{ atscale_install_target }}/current/bin/database/postgres_psql -f <( cat<<ENDL
+insert into atscale.directory_role_mappings ("id", "org_id", "directory_id", "from_group", "to_role_id" )
+values (md5(random()::text || clock_timestamp()::text)::uuid, 'default', '', 'group_a_docker', 'designcenter_user');
+
+insert into atscale.directory_role_mappings ("id", "org_id", "directory_id", "from_group", "to_role_id" )
+values (md5(random()::text || clock_timestamp()::text)::uuid, 'default', '', 'group_a_docker', 'query_user');
+
+insert into atscale.directory_role_mappings ("id", "org_id", "directory_id", "from_group", "to_role_id" )
+values (md5(random()::text || clock_timestamp()::text)::uuid, 'default', '', 'group_b_docker', 'designcenter_user');
+
+insert into atscale.directory_role_mappings ("id", "org_id", "directory_id", "from_group", "to_role_id" )
+values (md5(random()::text || clock_timestamp()::text)::uuid, 'default', '', 'group_b_docker', 'query_user');
+
+insert into atscale.directory_role_mappings ("id", "org_id", "directory_id", "from_group", "to_role_id" )
+values (md5(random()::text || clock_timestamp()::text)::uuid, 'default', '', 'group_security', 'designcenter_user');
+
+insert into atscale.directory_role_mappings ("id", "org_id", "directory_id", "from_group", "to_role_id" )
+values (md5(random()::text || clock_timestamp()::text)::uuid, 'default', '', 'group_security', 'query_user');
+ENDL
+)

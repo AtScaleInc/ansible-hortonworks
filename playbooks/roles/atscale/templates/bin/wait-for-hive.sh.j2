@@ -1,0 +1,36 @@
+#!/bin/bash
+
+{% if secured == "yes" %}
+{% if platform == "mapr" %}
+kinit -kt {{ mapr_conf_dir }}/mapr.keytab mapr/{{cluster_master_hostname}}@{{krb_realm}}
+{% else %}
+kinit -kt {{krb_keytab_dir}}/hive.keytab hive/{{cluster_master_hostname}}@{{krb_realm}}
+{% endif %}
+
+[ $? -ne 0 ] && echo "Failed to kinit, expect trouble."
+{% endif %}
+
+IS_RUNNING=false
+for attempt_num in {1..20}; do
+  sleep 30
+
+  {% if secured == "yes" %}
+  {% if platform == "mapr" %}
+  {{ hive_home }}/bin/beeline -u 'jdbc:hive2://{{ cluster_master_hostname }}:10000/;principal=mapr/{{ cluster_master_hostname }}@{{ krb_realm }}' -e 'show databases'
+  {% else %}
+  {{ hive_home }}/bin/beeline -u 'jdbc:hive2://{{ cluster_master_hostname }}:10000/;principal=hive/{{ cluster_master_hostname }}@{{ krb_realm }}' -e 'show databases'
+  {% endif %}
+  {% else %}
+    {{ hive_home }}/bin/beeline -u 'jdbc:hive2://' -e 'show databases'
+  {% endif %}
+
+  if [[ $? -ne 0 ]]; then
+    echo "Waiting for Hive to start(${attempt_num})"
+  else
+    echo "Hive has started"
+    IS_RUNNING=true
+    break
+  fi
+done
+
+exit 0

@@ -1,0 +1,28 @@
+#!/bin/bash
+
+LOCAL_HOSTNAME=$(hostname -f)
+
+if [ -z "$LOCAL_HOSTNAME" ]; then
+  echo "Couldn't get hostname"
+  exit 1
+fi
+
+TELEMETRY_ZIP=/tmp/$LOCAL_HOSTNAME-telemetryonly-$(date +%Y-%m-%d).zip
+
+curl -f -k -o $TELEMETRY_ZIP http://localhost:10502/support?enable=all,-LogFiles
+RET=$?
+
+if [ $RET -ne 0 ]; then
+  echo "Failed to get telemetry information ($RET)."
+  exit 1
+fi
+
+curl -k -f -X POST -F "myfiles=@$TELEMETRY_ZIP" --user atscale:atscale_upload https://upload.atscale.com/upload >/dev/null
+RET=$?
+
+if [ $RET -ne 0 ]; then
+  echo "Failed to upload telemetry information ($RET)."
+  exit 1
+fi
+
+exit 0

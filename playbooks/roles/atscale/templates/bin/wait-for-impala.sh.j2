@@ -1,0 +1,27 @@
+#!/bin/bash
+
+{% if secured == "yes" %}
+kinit -kt {{krb_keytab_dir}}/impala.keytab impala/{{cluster_master_hostname}}@{{krb_realm}}
+[ $? -ne 0 ] && echo "Failed to kinit, expect trouble."
+{% endif %}
+
+IS_RUNNING=false
+for attempt_num in {1..20}; do
+  sleep 30
+
+  {% if secured == "yes" %}
+    {{ hive_home }}/bin/beeline -u 'jdbc:hive2://{{ cluster_master_hostname }}:21050/;principal=impala/{{ cluster_master_hostname }}@{{ krb_realm }};ssl=true;sslTrustStore=/certificates/san-docker.infra.atscale.com.jks;trustStorePassword=borkbork' -e 'show databases'
+  {% else %}
+    {{ hive_home }}/bin/beeline -u 'jdbc:hive2://{{ cluster_master_hostname }}:21050/default;auth=noSasl' -n '{{ atscale_user }}' -p '' -e 'show databases'
+  {% endif %}
+
+  if [[ $? -ne 0 ]]; then
+    echo "Waiting for Impala to start(${attempt_num})"
+  else
+    echo "Impala has started"
+    IS_RUNNING=true
+    break
+  fi
+done
+
+exit 0

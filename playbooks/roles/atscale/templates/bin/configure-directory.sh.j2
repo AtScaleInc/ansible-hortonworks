@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# Can be "embedded" or "ad"
+DIRECTORY_TYPE=$1
+
+# Add new users for non-LDAP/AD mode
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+jwt=`curl -s -k -u admin:admin https://localhost:10500/default/auth`
+{% else %}
+{% set protocol = "http" %}
+jwt=`curl -s -u admin:admin http://localhost:10500/default/auth`
+{% endif %}
+
+DEFAULT_ORG_ID='default'
+
+if [ "$DIRECTORY_TYPE" == "embedded" ]; then
+PUT_BODY=$(tr -d [:cntrl:] <<ENDL
+{
+  "name":"defaultldapconfig",
+  "host_name":"localhost",
+  "port":10514,
+  "ldap_permissions":"ReadOnly",
+  "copy_on_login":true,
+  "org_id":"$DEFAULT_ORG_ID",
+  "username":"uid=admin,ou=system",
+  "user_configuration": {
+    "object_class":"person",
+    "kerberos_principal_attribute":"userPrincipalName",
+    "unique_id_attribute":"uid",
+    "name_attribute":"gecos",
+    "display_name_attribute":"displayName",
+    "email_attribute":"mail"
+  },
+  "membership_configuration": {
+    "default_group_memberships":[""],
+    "group_name_attribute":"displayName",
+    "group_description_attribute":"description",
+    "group_members_attribute":"memberUid"
+  },
+  "password":"atscale",
+  "base_dn":"dc=ldap,dc=atscale,dc=com",
+  "additional_user_dn":"cn=users",
+  "additional_group_dn":"cn=groups"
+}
+ENDL
+)
+elif [ "$DIRECTORY_TYPE" == "ad" ]; then
+PUT_BODY=$(tr -d [:cntrl:] <<ENDL
+{
+   "org_id" : "$DEFAULT_ORG_ID",
+   "name" : "CORPTEST AD CONFIG",
+   "host_name" : "corptest-ad-01.infra.atscale.com",
+   "port" : 389,
+   "username" : "atscaler-docker@CORPTEST.INFRA.ATSCALE.COM",
+   "password" : "@scale800",
+   "copy_on_login" : true,
+   "base_dn" : "DC=CORPTEST,DC=INFRA,DC=ATSCALE,DC=COM",
+   "additional_user_dn" : "ou=docker",
+   "ldap_permissions" : "ReadOnly",
+   "user_configuration" : {
+     "object_class" : "person",
+     "kerberos_principal_attribute": "userPrincipalName",
+     "unique_id_attribute" : "userPrincipalName",
+     "name_attribute" : "name",
+     "first_name_attribute" : "givenName",
+     "last_name_attribute" : "sn",
+     "display_name_attribute" : "displayName",
+     "email_attribute" : "mail"
+   },
+   "membership_configuration" : {
+     "default_group_memberships" : [ "atscale-supers", "atscale-doers" ],
+     "group_name_attribute" : "displayName",
+     "group_description_attribute" : "description",
+     "group_members_search_by_dn" : false,
+     "user_membership_attribute" : "memberOf",
+     "use_the_user_membership_attribute" : true
+   }
+ }
+ENDL
+)
+else
+  echo "Unrecognized directory type '$DIRECTORY_TYPE'."
+  exit 1
+fi
+
+curl -k -X POST -H "Authorization:Bearer $jwt" -H "Content-Type: application/json" --data "$PUT_BODY" {{ protocol }}://localhost:10502/directory > /dev/null
+RET=$?
+
+if [ $RET -ne 0 ]; then
+  echo "Failed to configure directory for '$DIRECTORY_TYPE' ($RET)."
+  exit 1
+fi

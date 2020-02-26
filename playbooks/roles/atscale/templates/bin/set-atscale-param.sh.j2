@@ -1,0 +1,62 @@
+#!/bin/bash
+
+TARGET=$1
+PARAM=$2
+VALUE=$3
+
+TS=$(date +%s)
+
+case "$TARGET" in
+  engine)
+    if [ "$PARAM" == "xmx" ]; then
+      EWPATH="{{ atscale_install_target }}/conf/atscale.yaml"
+      cp $EWPATH $EWPATH.$TS
+      sed '/^ *engine:/,/^ *[^:]*:/s/memory:\s*[0-9]*[GM]/memory: '$VALUE'/' $EWPATH.$TS > $EWPATH
+    fi
+  ;;
+  virtualization-supervisor)
+    if [ "$PARAM" == "memory" ]; then
+      EWPATH="{{ atscale_install_target }}/conf/atscale.yaml"
+      cp $EWPATH $EWPATH.$TS
+      sed '/^ *supervisor:/,/^ *memory:/s/memory:\s*[0-9]*[GM]/memory: '$VALUE'/' $EWPATH.$TS > $EWPATH
+    elif [ "$PARAM" == "cores" ]; then
+      EWPATH="{{ atscale_install_target }}/conf/atscale.yaml"
+      cp $EWPATH $EWPATH.$TS
+      sed '/^ *supervisor:/,/^ *cores:/s/cores:\s*[0-9]*/cores: '$VALUE'/' $EWPATH.$TS > $EWPATH
+    else
+      echo "Unknown parameter ($PARAM)"
+    fi
+  ;;
+  virtualization-worker)
+    if [ "$PARAM" == "memory" ]; then
+      EWPATH="{{ atscale_install_target }}/conf/atscale.yaml"
+      cp $EWPATH $EWPATH.$TS
+      sed '/^ *worker:/,/^ *memory:/s/memory:\s*[0-9]*[GM]/memory: '$VALUE'/' $EWPATH.$TS > $EWPATH
+    elif [ "$PARAM" == "cores" ]; then
+      EWPATH="{{ atscale_install_target }}/conf/atscale.yaml"
+      cp $EWPATH $EWPATH.$TS
+      sed '/^ *worker:/,/^ *cores:/s/cores:\s*[0-9]*/cores: '$VALUE'/' $EWPATH.$TS > $EWPATH
+    else
+      echo "Unknown parameter ($PARAM)"
+    fi
+  ;;
+  virtualization-listener)
+    if [ "$PARAM" == "memory" ]; then
+      EWPATH="{{ atscale_install_target }}/conf/atscale.yaml"
+      cp $EWPATH $EWPATH.$TS
+      sed '/^ *listener:/,/^ *memory:/s/memory:\s*[0-9]*[GM]/memory: '$VALUE'/' $EWPATH.$TS > $EWPATH
+    elif [ "$PARAM" == "cores" ]; then
+      EWPATH="{{ atscale_install_target }}/conf/atscale.yaml"
+      cp $EWPATH $EWPATH.$TS
+      sed '/^ *listener:/,/^ *cores:/s/cores:\s*[0-9]*/cores: '$VALUE'/' $EWPATH.$TS > $EWPATH
+    else
+      echo "Unknown parameter ($PARAM)"
+    fi
+  ;;
+  *)
+    echo "Unknown target ($TARGET)"
+esac
+
+
+# xmlstarlet ed -s "/configuration" -t elem -n "newP" -v "" -s "//newP" -t elem -n "name" -v "qwe" -s "//newP" -t elem -n value -v 123  hive-site.xml  | less
+# xmlstarlet ed -d "/configuration/property[.//name = 'hive.log.every.n.records']" hive-site.xml | less

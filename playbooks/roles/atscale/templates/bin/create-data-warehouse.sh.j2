@@ -1,0 +1,53 @@
+#!/bin/bash
+
+DATA_WAREHOUSE_NAME=$1
+CONNECTION_ID=$2
+DEFAULT_ORG_ID=default
+
+{% if as_version is version_compare('7.4', '>=') %}
+
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+jwt=`curl -s -k -u admin:admin "https://localhost:10500/default/auth"`
+{% else %}
+{% set protocol = "http" %}
+jwt=`curl -s -u admin:admin "http://localhost:10500/default/auth"`
+{% endif %}
+
+cgid=`curl -k -s -H "Authorization:Bearer $jwt" {{ protocol }}://localhost:10502/connection-groups/orgId/$DEFAULT_ORG_ID/conn/$CONNECTION_ID | jq -r .response.id`
+
+# In this if-statement, we're delete the Connection Group that was created by the Installer, if there is one.
+# This can go away when the 7.4 Installer stops creating one.
+if [ -n "$cgid" ]; then
+  echo "Deleting connection group with ID $cgid"
+  curl -f -s -k -X DELETE -H "Authorization:Bearer $jwt" {{ protocol }}://localhost:10502/connection-groups/orgId/$DEFAULT_ORG_ID/connection-group/$cgid > /dev/null
+  RET=$?
+  if [ $RET -ne 0 ]; then
+    echo "Failed to delete an existing Connection Group with connection ID '$CONNECTION_ID' and ID '$cgid'"
+  else
+    echo "Deleted existing Connection Group with ID '$cgid'"
+  fi
+fi
+
+POST_BODY=$(tr -d [:cntrl:] <<ENDL
+{ "name" : "$DATA_WAREHOUSE_NAME",
+  "connectionId" : "$CONNECTION_ID",
+  "filesystemType" : "unknown",
+  "subgroups" : [ ]
+}
+ENDL
+)
+
+curl -f -s -k -X POST -H "Authorization:Bearer $jwt" -H "Content-Type: application/json" --data "$POST_BODY" {{ protocol }}://localhost:10502/connection-groups/orgId/$DEFAULT_ORG_ID > /dev/null
+RET=$?
+
+if [ $RET -ne 0 ]; then
+  [ -z "$RETRY_CREATE_DWH" ] && echo "Failed to create data warehouse with name '$DATA_WAREHOUSE_NAME' and connection ID '$CONNECTION_ID' ($RET)"
+  exit 1
+else
+  # Add new line for better formatting in case on retry strategy
+  [ "$RETRY_CREATE_DWH" == "yes" ] && echo
+  echo "Created new data warehouse with name '$DATA_WAREHOUSE_NAME' and connection ID '$CONNECTION_ID'"
+fi
+
+{% endif %}

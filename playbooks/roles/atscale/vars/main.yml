@@ -1,0 +1,23 @@
+---
+secured: "no"
+as_version: 2019.2.2.904
+atscale_install_target: /opt/atscale
+atscale_hdfs_home: "/user/{{ atscale_user }}"
+atscale_home: "/home/{{ atscale_user }}"
+image_util_dir: /tmp
+atscale_installer_legacy_basename: "atscale-{{as_version}}-el6.x86_64"
+
+atscale_installer_basename: "atscale-{{as_version | regex_replace('([0-9.]+)\\.([0-9]+)','\\1.\\2-\\2') }}-1.x86_64.rpm"
+atscale_installer_url: "https://s3-us-west-1.amazonaws.com/files.atscale.com/installer/package/{{ atscale_installer_basename }}"
+
+atscale_public_server_name: ec2-34-228-185-130.compute-1.amazonaws.com
+hostname_atscale: ip-10-0-10-102.ec2.internal
+atscale_user_limit_nproc: 12288
+
+download_dir: "/tmp"
+logs_dir: "/tmp/logs"
+
+atscale_user: atscale
+atscale_uid: 1010
+atscale_group: atscale
+atscale_gid: 1010

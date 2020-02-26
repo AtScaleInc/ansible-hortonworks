@@ -1,0 +1,15 @@
+#!/bin/bash
+
+PARAM=$1
+VALUE=$2
+
+{{ atscale_install_target }}/current/bin/database/postgres_psql -f <( cat<<ENDL
+update atscale.engine_settings
+set deactivated_at = now()
+where name = '$PARAM'
+and deactivated_at is null;
+
+insert into atscale.engine_settings ("name", "value", "created_at", "user", "id" )
+values ('$PARAM', '$VALUE', now(), 'image-builder', md5(random()::text || clock_timestamp()::text)::uuid);
+ENDL
+)

@@ -1,0 +1,14 @@
+[Unit]
+Description=Atscale
+ConditionPathExists={{ image_util_dir }}/systemd-cloud-startup.sh
+
+[Service]
+Type=forking
+ExecStart={{ image_util_dir }}/systemd-cloud-startup.sh
+TimeoutSec=0
+StandardOutput=tty
+RemainAfterExit=yes
+SysVStartPriority=99
+
+[Install]
+WantedBy=multi-user.target

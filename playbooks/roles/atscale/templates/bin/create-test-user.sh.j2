@@ -1,0 +1,38 @@
+#!/bin/bash
+
+USER_NAME=$1
+USER_NAME_SUFFIX=$2
+
+# Add new users for non-LDAP/AD mode
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+jwt=`curl -s -k -u admin:admin https://localhost:10500/default/auth`
+{% else %}
+{% set protocol = "http" %}
+jwt=`curl -s -u admin:admin http://localhost:10500/default/auth`
+{% endif %}
+
+PUT_BODY=$(tr -d [:cntrl:] <<ENDL
+  {
+    "password" : "@scale800",
+    "confirm_password" : "@scale800",
+    "email" : "$USER_NAME@atscale.com",
+    "username" : "$USER_NAME$USER_NAME_SUFFIX",
+    "name" : "$USER_NAME",
+    "roles" : ["query_user", "designcenter_user"],      
+    "picture" : "",
+    "super_user" : false,
+    "api_super_user" : false
+  }
+ENDL
+)
+
+DEFAULT_ORG_ID='default'
+
+curl -k -X POST -H "Authorization:Bearer $jwt" -H "Content-Type: application/json" --data "$PUT_BODY" {{ protocol }}://localhost:10500/api/1.0/org/$DEFAULT_ORG_ID/users > /dev/null
+RET=$?
+
+if [ $RET -ne 0 ]; then
+  echo "Failed to create new user '$USER_NAME' ($RET)."
+  exit 1
+fi

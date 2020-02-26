@@ -1,0 +1,51 @@
+- name: include common vars
+  include_vars: "../hadoop/vars/main.yml"
+
+- name: include plaform vars
+  include_vars: "../hadoop/vars/{{platform}}.yml"
+
+- name: include plaform and version specific vars
+  include_vars: "../hadoop/vars/{{platform}}_{{platform_version}}.yml"
+
+- name: Generate startup scripts
+  template:
+    src: "templates/bin/{{ item }}.j2"
+    dest: "{{ image_util_dir }}/{{ item }}"
+    mode: 0755
+  with_items:
+    - "wait-for-hdfs.sh"
+
+# Creating local hadoop group and hdfs user so we can create the hdfs atscale home directory
+- block:
+  - name: Waiting for HDFS
+    shell: "{{ image_util_dir}}/wait-for-hdfs.sh"
+
+  - name: Creating atscaler home in DFS
+    shell: "{{ item }}"
+    become: yes
+    become_user: "{{ hdfs_user }}"
+    become_flags: "-s /bin/bash"
+    become_method: su
+    with_items:
+      - "{{ hdfs_bin }} -mkdir -p {{ atscale_hdfs_home }}"
+      - "{{ hdfs_bin }} -chown {{ atscale_user }} {{ atscale_hdfs_home }}"
+    when: platform in [ "cdh", "hdp" ]
+
+  when: secured != "yes"
+
+# kinit as the hdfs user so we can create the hdfs atscale home directory
+- block:
+  - name: kinit as hdfs
+    shell: kinit -kt /keytabs/hdfs.keytab hdfs/hadoop-node-01.docker.infra.atscale.com
+
+  - name: Waiting for HDFS
+    shell: "{{ image_util_dir}}/wait-for-hdfs.sh"
+
+  - name: Creating atscaler home in DFS
+    shell: "{{ item }}"
+    with_items:
+      - "{{ hdfs_bin }} -mkdir -p {{ atscale_hdfs_home }}"
+      - "{{ hdfs_bin }} -chown {{ atscale_user }} {{ atscale_hdfs_home }}"
+      - "{{ hdfs_bin }} -mkdir -p {{ atscale_hdfs_home }}/atscale/data"
+
+  when: secured == "yes"

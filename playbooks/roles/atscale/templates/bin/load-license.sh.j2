@@ -1,0 +1,26 @@
+#!/bin/bash
+
+LICENSE=$1
+
+if [ -z "$LICENSE" ]; then
+  LICENSE=/tmp/license.$$
+  trap "rm $LICENSE" EXIT
+  cat /dev/stdin > $LICENSE
+fi
+
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+{% else %}
+{% set protocol = "http" %}
+{% endif %}
+
+
+jwt=$(curl -s -k -X GET -u admin:admin "{{ protocol }}://{{ atscale_public_server_name }}:10500/default/auth")
+
+{% if as_version is version_compare('7.0', '>=') %}
+curl -s -k -X PUT -H "Authorization:Bearer $jwt" -F license=@$LICENSE {{ protocol }}://{{ atscale_public_server_name }}:10502/license
+{% else %}
+curl -s -k -X PUT -H "Authorization:Bearer $jwt" -d @$LICENSE {{ protocol }}://{{ atscale_public_server_name }}:10502/license
+{% endif %}
+
+echo ""

@@ -1,0 +1,94 @@
+#!/bin/bash
+
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+{% else %}
+{% set protocol = "http" %}
+{% endif %}
+
+ATSCALE_USER=${ATSCALE_USER:-admin}
+ATSCALE_PASSWORD=${ATSCALE_PASSWORD:-admin}
+ATSCALE_ENGINE=${ATSCALE_ENGINE:-localhost}
+ATSCALE_ENGINE_PORT=${ATSCALE_ENGINE_PORT:-10502}
+ATSCALE_MODELER=${ATSCALE_MODELER:-localhost}
+ATSCALE_MODELER_PORT=${ATSCALE_MODELER_PORT:-10500}
+ORG_ID=${ORG_ID:-default}
+CURRENT_NODE="$(hostname -f | sed 's/.*-node-0\([0-9]\).*/\1/')"
+PLATFORM_VERSION=$1
+
+JWT=$(curl -k -X GET -u $ATSCALE_USER:$ATSCALE_PASSWORD "{{ protocol }}://$ATSCALE_MODELER:$ATSCALE_MODELER_PORT/$ORG_ID/auth")
+
+
+create_connection_group() {
+        json=$1
+        echo "DB2 group JSON"
+        echo $json
+        echo "END JSON"
+        CONNECTION_GROUP_ID=$(curl -v -k -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID -d "$json" | tr -d [:cntrl:] | sed 's/.*"id" : "\([^"]*\)".*/\1/')
+        echo "connection group created"
+}
+
+create_connection_subgroup() {
+        json=$1
+        echo "DB2 subgroup JSON"
+        echo $json
+        echo "END JSON"
+        curl -v -k -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID/connection-group/$CONNECTION_GROUP_ID -d "$json"
+        echo "connection sub group created"
+        echo $(curl -v -k -X GET -H "Authorization:Bearer $JWT" {{ protocol }}://$ATSCALE_ENGINE:$ATSCALE_ENGINE_PORT/connection-groups/orgId/$ORG_ID/connection-group/$CONNECTION_GROUP_ID/status)
+}
+
+NAME="DB2"
+
+GROUP_DATABASE=atscale
+GROUP_DEFAULT_SCHEMA=as_adventure
+GROUP_CONN_ID=${GROUP_CONN_ID:-$2}
+GROUP_EXTRA_PROPERTIES="{\"udafMode\": \"udaf_disabled\"}"
+
+SUBGROUP_CONNECTOR_TYPE=db2
+if [[ "$PLATFORM_VERSION" != *_* ]]; then
+  SUBGROUP_HOSTS={{ hostname_data }}
+else
+  version_transform=`echo "$PLATFORM_VERSION"| sed 's/[\._]/\-/g'`
+  SUBGROUP_HOSTS="db2-${version_transform}.infra.atscale.com"
+fi
+SUBGROUP_PORT=50000
+SUBGROUP_USERNAME=db2
+SUBGROUP_PASSWORD=db2
+SUBGROUP_EXTRA_JDBC_FLAGS=
+
+# dw payload
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME",
+  "connectionId":"$GROUP_CONN_ID",
+  "filesystemType": "",
+  "database": "$GROUP_DATABASE",
+  "aggregateSchema":"$GROUP_DEFAULT_SCHEMA",
+  "subgroups":[],
+  "extraProperties": $GROUP_EXTRA_PROPERTIES
+}
+ENDL
+)
+
+# this sets GROUP_ID for you to use futher down in JSON
+if [ "$CURRENT_NODE" == "1" ]; then
+	  create_connection_group "$JSON"
+fi
+
+# payload to create the engine and attach it to the dw
+JSON=$(tr -d [:cntrl:] <<ENDL
+{ "name": "$NAME Connection",
+  "connectorType": "$SUBGROUP_CONNECTOR_TYPE",
+  "hosts": "$SUBGROUP_HOSTS",
+  "port": $SUBGROUP_PORT,
+  "username": "$SUBGROUP_USERNAME",
+  "password": "$SUBGROUP_PASSWORD",
+  "extraJdbcFlags": "$SUBGROUP_EXTRA_JDBC_FLAGS",
+  "queryRoles": ["large_user_query_role", "small_user_query_role", "system_query_role"]
+}
+ENDL
+)
+
+if [ "$CURRENT_NODE" == "1" ]; then
+	  create_connection_subgroup "$JSON"
+fi

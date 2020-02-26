@@ -1,0 +1,86 @@
+
+- name: Generate startup scripts
+  template:
+    src: "templates/bin/{{ item }}.j2"
+    dest: "{{ image_util_dir }}/{{ item }}"
+    mode: 0755
+  with_items:
+    - "load-sample-data.sh"
+    - "set-engine-setting.sh"
+    - "initialize-organization.sh"
+    - "create-data-warehouse.sh"
+    #- "set-sql-engine.sh"
+    - "set-atscale-param.sh"
+    - "set-hostname.sh"
+    - "set-password.sh"
+    - "load-license.sh"
+    - "load-test-data.sh"
+    - "configure-directory.sh"
+
+- name: Generate startup scripts
+  template:
+    src: "templates/bin/{{ item }}.j2"
+    dest: "{{ image_util_dir }}/{{ item }}"
+    mode: 0755
+  with_items:
+    - "update-group-mappings.sh"
+    - "create-test-user.sh"
+
+- name: Set ulimits
+  pam_limits:
+    domain: "{{ atscale_user }}"
+    limit_type: "{{item.limit_type}}"
+    limit_item: "{{item.limit_item}}"
+    value: "{{item.value}}"
+  with_items:
+  - { limit_type: '-', limit_item: 'nproc', value: '{{ atscale_user_limit_nproc }}' }
+
+
+- name: Download Atscale package
+  get_url:
+    url: "{{ atscale_installer_url }}"
+    dest: "{{ download_dir }}"
+    timeout: 60
+    mode: 0755
+
+- name: Unpack atscale installer
+  shell: "rpm -i {{ download_dir }}/{{atscale_installer_basename}}"
+  environment:
+    ATSCALE_USER: "{{ atscale_user }}"
+
+- name: "Add atscale.yaml"
+  template:
+    src: "templates/atscale/atscale.yaml.j2"
+    dest: "{{ atscale_install_target }}/conf/atscale.yaml"
+    mode: 0755
+    owner: "{{ atscale_user }}"
+    group: "{{ atscale_group }}"
+
+- name: Configuring atscale
+  command: "sudo su - {{ atscale_user }} -c 'cd {{ atscale_install_target }}/versions/{{ as_version }} && ./bin/configurator.sh --first-time --automatic-install'"
+  register: command_result
+
+- name: "Configuring atscale call output"
+  debug:
+    var: command_result
+
+- block:
+  - name: Install check
+    fail:
+      msg: "Installation Failed."
+    when: "'Installation Failed.' in command_result.stdout"
+
+- name: Mark broken install
+  shell: "touch /THIS_IS_A_BROKEN_INSTALL"
+  when: "'Installation Failed.' in command_result.stdout"
+
+
+# - name: Stopping atscale
+#   shell: "{{ atscale_install_target }}/bin/atscale_stop -f"
+#   become: yes
+#   become_user: "{{ atscale_user }}"
+
+# - name: Cleanup
+#   shell: "{{ item }}"
+#   with_items:
+#     - "rm -rf {{ atscale_install_target }}/log/*"

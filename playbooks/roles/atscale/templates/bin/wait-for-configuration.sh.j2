@@ -1,0 +1,37 @@
+#!/bin/bash
+
+WAIT_TIME=30
+SLEEP_TIME=5
+MAX_LOOP=100
+
+CONFIGURATION_GATE=/mnt/ha-cluster/atscale-configured-gate
+
+function wait_for() {
+  VAL=$(timeout $WAIT_TIME [ -f $CONFIGURATION_GATE ] > /dev/null)
+  RET=$?
+  if [ $RET -eq 0 ]; then
+    if [[ "$VAL" == *failure*Exception* ]]; then
+      echo "wait-more"
+    else
+      echo "ok"
+    fi
+  elif [ $RET -eq 124 ]; then
+    exit 124
+  else
+    echo "wait-more"
+  fi
+}
+
+
+LOOP_COUNT=0
+while [ "$(wait_for)" != "ok" ]; do
+  [ $LOOP_COUNT -eq 0 ] && echo -n "Waiting ${SLEEP_TIME}s for ${CONFIGURATION_GATE} file..." || echo -n "."
+  if [ $((LOOP_COUNT++)) -gt $MAX_LOOP ]; then
+    exit 123
+  fi
+  sleep $SLEEP_TIME
+done
+
+[ $LOOP_COUNT -ne 0 ] && echo -e "\nWaited $((LOOP_COUNT*SLEEP_TIME))s for ${CONFIGURATION_GATE} file."
+
+exit 0

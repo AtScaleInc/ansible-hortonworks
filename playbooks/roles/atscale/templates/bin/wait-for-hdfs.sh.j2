@@ -1,0 +1,98 @@
+#!/bin/bash
+
+WAIT_TIME=30
+SLEEP_TIME=5
+MAX_LOOP=100
+
+{% if platform == "mapr" %}
+  KINIT="kinit -kt {{krb_keytab_dir}}/mapr.keytab mapr/{{mapr_cluster_name}}@{{krb_realm}}"
+{% else %}
+  KINIT="kinit -kt {{krb_keytab_dir}}/hdfs.keytab hdfs/{{cluster_master_hostname}}@{{krb_realm}}"
+{% endif %}
+
+function wait_for_kerberos() {
+  VAL="$(timeout $WAIT_TIME ${KINIT} > /dev/null && echo ok)"
+  RET=$?
+  if [ $RET -eq 0 ]; then
+    if [[ "$VAL" == "ok" ]]; then
+      echo "ok"
+    else
+      echo "wait-more"
+    fi
+  elif [ $RET -eq 124 ]; then
+    exit 124
+  else
+    echo "wait-more"
+  fi
+}
+
+
+{% if secured == "yes" %}
+LOOP_COUNT=0
+while [ "$(wait_for_kerberos)" != "ok" ]; do
+  [ $LOOP_COUNT -eq 0 ] && echo -n "Waiting ${SLEEP_TIME}s for Kerberos..." || echo -n "."
+  if [ $((LOOP_COUNT++)) -gt $MAX_LOOP ]; then
+    echo -e "\nERROR *** Waited $LOOP_COUNT times over $((LOOP_COUNT*SLEEP_TIME))s for Kerberos to be live and gave up."
+    exit 123
+  fi
+  sleep $SLEEP_TIME
+done
+{% endif %}
+
+function wait_for_hdfs_live() {
+  VAL="$(timeout $WAIT_TIME {{ hdfs_bin }} -stat /tmp > /dev/null && echo ok)"
+  RET=$?
+  if [ $RET -eq 0 ]; then
+    if [[ "$VAL" == "ok" ]]; then
+      echo "ok"
+    else
+      echo "wait-more"
+    fi
+  elif [ $RET -eq 124 ]; then
+    exit 124
+  else
+    echo "wait-more"
+  fi
+}
+
+function wait_for_hdfs_writable() {
+  VAL="$(timeout $WAIT_TIME {{ hdfs_bin }} -copyFromLocal -f <(echo "check") /tmp/live-check.$$ > /dev/null && echo ok)"
+  RET=$?
+  if [ $RET -eq 0 ]; then
+    if [[ "$VAL" == "ok" ]]; then
+      echo "ok"
+    else
+      echo "wait-more"
+    fi
+  elif [ $RET -eq 124 ]; then
+    exit 124
+  else
+    echo "wait-more"
+  fi
+}
+
+LOOP_COUNT=0
+while [ "$(wait_for_hdfs_live)" != "ok" ]; do
+  [ $LOOP_COUNT -eq 0 ] && echo -n "Waiting ${SLEEP_TIME}s for HDFS..." || echo -n "."
+  if [ $((LOOP_COUNT++)) -gt $MAX_LOOP ]; then
+    echo -e "\nERROR *** Waited $LOOP_COUNT times over $((LOOP_COUNT*SLEEP_TIME))s for HDFS to be live and gave up."
+    exit 123
+  fi
+  sleep $SLEEP_TIME
+done
+
+[ $LOOP_COUNT -ne 0 ] && echo -e "\nWaited $((LOOP_COUNT*SLEEP_TIME))s for HDFS to be live."
+
+LOOP_COUNT=0
+while [ "$(wait_for_hdfs_writable)" != "ok" ]; do
+  [ $LOOP_COUNT -eq 0 ] && echo -n "Waiting ${SLEEP_TIME}s for HDFS..." || echo -n "."
+  if [ $((LOOP_COUNT++)) -gt $MAX_LOOP ]; then
+    echo -e "\nERROR *** Waited $LOOP_COUNT times over $((LOOP_COUNT*SLEEP_TIME))s for HDFS to be writeable and gave up."
+    exit 123
+  fi
+  sleep $SLEEP_TIME
+done
+
+[ $LOOP_COUNT -ne 0 ] && echo -e "\nWaited $((LOOP_COUNT*SLEEP_TIME))s for HDFS to be writable."
+
+exit 0

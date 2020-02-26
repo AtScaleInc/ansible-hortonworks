@@ -1,0 +1,52 @@
+install_teradata_driver() {
+
+  TERADATA_DRIVER_PACKAGE_URL="http://artifactory.infra.atscale.com/dev-packages/teradata/jdbc/TeraJDBC__indep_indep.16.20.00.10.zip"
+
+  curl --head -f $TERADATA_DRIVER_PACKAGE_URL
+  [ $? -ne 0 ] && echo "Couldn't find modeler build at $TERADATA_DRIVER_PACKAGE_URL" && return $?
+  mkdir -p /tmp/teradata-jdbc
+
+  echo "Downloading Teradata JDBC driver..."
+  curl -o /tmp/teradata-jdbc/TeraJDBC__indep_indep.16.20.00.10.zip $TERADATA_DRIVER_PACKAGE_URL
+  [ $? -ne 0 ] && echo "Couldn't download teradara driver" && return $?
+
+  echo "Unpacking teradata driver..."
+  unzip -qq -o /tmp/teradata-jdbc/TeraJDBC__indep_indep.16.20.00.10.zip -d /tmp/teradata-jdbc
+  [ $? -ne 0 ] && echo "Couldn't unpack teradata driver" && return $?
+
+  echo "Creating teradata extensions dir..."
+  mkdir -p /opt/atscale/extensions/teradata
+  [ $? -ne 0 ] && echo "Couldn't create teradata extensions directory" && return $?
+
+  echo "Putting binaries in place..."
+  cp -r /tmp/teradata-jdbc/*.jar /opt/atscale/extensions/teradata
+  [ $? -ne 0 ] && echo "Couldn't copy teradata driver to extensions directory" && return $?
+
+  echo "installed teradata driver"
+}
+
+install_oracle_driver() {
+  ORACLE_JDBC_DRIVER_URL="http://artifactory.infra.atscale.com/dev-packages/oracle/jdbc/ojdbc8-18.3.0.0.jar"
+
+  curl --head -f $ORACLE_JDBC_DRIVER_URL
+  [ $? -ne 0 ] && echo "Couldn't find oracle jdbc driver ORACLE_JDBC_DRIVER_URL"
+
+  echo "Downloading Oracle JDBC driver..."
+
+  curl -o /tmp/ojdbc8-18.3.0.0.jar $ORACLE_JDBC_DRIVER_URL
+  [ $? -ne 0 ] && echo "Couldn't download oracle driver" && return $?
+	
+  echo "Putting jar in place..."
+
+  echo "Creating oracle extensions dir..."
+  mkdir -p /opt/atscale/extensions/oracle
+	
+  [ $? -ne 0 ] && echo "Couldn't create oracle extensions directory" && return $?
+
+  echo "Putting jar in place..."
+  cp -r /tmp/ojdbc8-18.3.0.0.jar /opt/atscale/extensions/oracle
+  [ $? -ne 0 ] && echo "Couldn't copy oracle driver to extensions directory" && return $?
+
+  echo "installed oracle driver"
+}
+

@@ -1,0 +1,32 @@
+#!/bin/bash
+
+rm -rf /usr/lib/hadoop
+rm -rf /usr/lib/hive
+
+ln -sf /hadoop-shared/lib/avro /usr/lib/avro
+ln -sf /hadoop-shared/lib/bigtop-tomcat /usr/lib/bigtop-tomcat
+ln -sf /hadoop-shared/lib/bigtop-utils /usr/lib/bigtop-utils
+ln -sf /hadoop-shared/lib/hadoop /usr/lib/hadoop
+ln -sf /hadoop-shared/lib/hadoop-0.20-mapreduce /usr/lib/hadoop-0.20-mapreduce
+ln -sf /hadoop-shared/lib/hadoop-hdfs /usr/lib/hadoop-hdfs
+ln -sf /hadoop-shared/lib/hadoop-mapreduce /usr/lib/hadoop-mapreduce
+ln -sf /hadoop-shared/lib/hadoop-yarn /usr/lib/hadoop-yarn
+ln -sf /hadoop-shared/lib/hive /usr/lib/hive
+ln -sf /hadoop-shared/lib/parquet /usr/lib/parquet
+ln -sf /hadoop-shared/lib/sentry /usr/lib/sentry
+ln -sf /hadoop-shared/lib/zookeeper /usr/lib/zookeeper
+
+ln -sf /hadoop-shared/bin/beeline /usr/bin/beeline
+ln -sf /hadoop-shared/bin/bigtop-detect-javahome /usr/bin/bigtop-detect-javahome
+ln -sf /hadoop-shared/bin/hadoop /usr/bin/hadoop
+ln -sf /hadoop-shared/bin/hdfs /usr/bin/hdfs
+ln -sf /hadoop-shared/bin/hive /usr/bin/hive
+ln -sf /hadoop-shared/bin/yarn /usr/bin/yarn
+
+[ ! -d /etc/hadoop ] && mkdir /etc/hadoop
+ln -sf /hadoop-shared/etc/hadoop/conf.empty/ /etc/hadoop/conf
+
+[ ! -d /etc/hive ] && mkdir /etc/hive
+ln -sf /hadoop-shared/etc/hive/conf.dist /etc/hive/conf
+
+exit 0

@@ -1,0 +1,175 @@
+#!/bin/bash
+
+REDSHIFT_HOST="${REDSHIFT_HOST:-}"
+REDSHIFT_USER="${REDSHIFT_USER:-}"
+REDSHIFT_PASS="${REDSHIFT_PASS:-}"
+REDSHIFT_SCHEMA="${REDSHIFT_SCHEMA:-}"
+REDSHIFT_FS_URL="${REDSHIFT_FS_URL:-}"
+
+REDSHIFT_BUCKET_REGION="${REDSHIFT_BUCKET_REGION:-}"
+REDSHIFT_ACCESS_KEY="${REDSHIFT_ACCESS_KEY:-}"
+REDSHIFT_SECRET_KEY="${REDSHIFT_SECRET_KEY:-}"
+
+if [ -z "$REDSHIFT_HOST" ]; then
+  echo "Redshift configuration environment variables must be defined or hardcoded in this script."
+  exit 1
+fi
+
+{% if as_version is version_compare('7.4', '>=') %}
+
+DATA_WAREHOUSE_NAME="Redshift Data Warehouse"
+CONNECTION_ID="$1"
+DEFAULT_ORG_ID="default"
+
+echo "Setting up $DATA_WAREHOUSE_NAME with connection ID $CONNECTION_ID"
+{{ image_util_dir }}/create-data-warehouse.sh "$DATA_WAREHOUSE_NAME" "$CONNECTION_ID"
+
+{% if secured == "yes" %}
+{% set protocol = "https" %}
+jwt=`curl -s -k -u admin:admin https://localhost:10500/default/auth`
+{% else %}
+{% set protocol = "http" %}
+jwt=`curl -s -u admin:admin http://localhost:10500/default/auth`
+{% endif %}
+
+cgid=`curl -k -s -H "Authorization:Bearer $jwt" {{ protocol }}://localhost:10502/connection-groups/orgId/$DEFAULT_ORG_ID/conn/$CONNECTION_ID | jq -r .response.id`
+
+if [ -z "$cgid" ]; then
+   echo Failed to get the connection group ID corresponding to connection ID $CONNECTION_ID
+   exit 1
+fi
+
+PUT_BODY=$(tr -d [:cntrl:] <<ENDL
+  {
+    "name" : "$DATA_WAREHOUSE_NAME",
+    "connectionId" : "$CONNECTION_ID",
+    "filesystemType" : "s3a",
+    "filesystemUri" : "$REDSHIFT_FS_URL",
+    "aggregateSchema" : "$REDSHIFT_SCHEMA",
+    "database" : "$REDSHIFT_SCHEMA",
+    "extraProperties" : {
+      "s3BucketRegion" : "$REDSHIFT_BUCKET_REGION",
+      "s3aSecretKey"   : "$REDSHIFT_SECRET_KEY",
+      "iamSecretKey"   : "$REDSHIFT_SECRET_KEY",
+      "s3aAccessKey"   : "$REDSHIFT_ACCESS_KEY",
+      "iamAccessKey"   : "$REDSHIFT_ACCESS_KEY"
+    }
+  }
+ENDL
+)
+
+curl -f -s -k -X PUT -H "Authorization:Bearer $jwt" -H "Content-Type: application/json" --data "$PUT_BODY" {{ protocol }}://localhost:10502/connection-groups/orgId/$DEFAULT_ORG_ID/connection-group/$cgid > /dev/null
+RET=$?
+
+if [ $RET -ne 0 ]; then
+  echo "Failed to add extra properties to the '$DATA_WAREHOUSE_NAME' connection group ($RET)."
+  exit 1
+fi
+
+POST_BODY=$(tr -d [:cntrl:] <<ENDL
+  {
+    "name" : "Redshift",
+    "connectorType" : "redshift",
+    "hosts" : "$REDSHIFT_HOST",
+    "port" : 5439,
+    "username" : "$REDSHIFT_USER",
+    "password" : "$REDSHIFT_PASS",
+    "queryRoles" : ["large_user_query_role", "small_user_query_role", "system_query_role"],
+    "extraProperties" : { }
+  }
+ENDL
+)
+
+curl -f -s -k -X POST -H "Authorization:Bearer $jwt" -H "Content-Type: application/json" --data "$POST_BODY" {{ protocol }}://localhost:10502/connection-groups/orgId/$DEFAULT_ORG_ID/connection-group/$cgid > /dev/null
+RET=$?
+
+if [ $RET -ne 0 ]; then
+  echo "Failed to add a Redshift SQL Engine to the '$DATA_WAREHOUSE_NAME' connection group ($RET)."
+  exit 1
+fi
+
+{% elif as_version is version_compare('7.0', '>=') %}
+
+DATE=$(date +%Y%m%d)
+DT=$(date +%Y%m%d%H%M)
+ENV_UUID="prod"
+GROUP_UUID="$DATE-2222-2222-0000-$DT"
+SUBGROUP_UUID="$DATE-3333-3333-0000-$DT"
+
+{{ atscale_install_target}}/current/bin/database/postgres_psql < <(cat <<ENDL
+-- Environment
+insert into environment (env_id, org_id, name, default_env, created_at, updated_at, hiveserver2_port )
+values ( '$ENV_UUID', 'default', 'prod', 't', now(), now(), 11111 );
+
+-- Connection group
+insert into connection_groups ( org_id, conn_id, hdfs_uri, default_schema, id, name, database )
+values ( 'default', '$CONNECTION_ID', '$REDSHIFT_FS_URL', '$REDSHIFT_SCHEMA', '$GROUP_UUID', 'redshift', '$REDSHIFT_SCHEMA' );
+
+insert into connection_group_extra_props( id, connection_group_id, property_name, property_value, created_at )
+values
+( '$DATE-2222-2222-0001-$DT', '$GROUP_UUID', 's3BucketRegion', '$REDSHIFT_BUCKET_REGION', now() ),
+( '$DATE-2222-2222-0002-$DT', '$GROUP_UUID', 's3aSecretKey', '$({{ atscale_install_target }}/bin/od -cmd=e -val="${REDSHIFT_SECRET_KEY:-}")', now() ),
+( '$DATE-2222-2222-0003-$DT', '$GROUP_UUID', 'iamSecretKey', '$({{ atscale_install_target }}/bin/od -cmd=e -val="${REDSHIFT_SECRET_KEY:-}")', now() ),
+( '$DATE-2222-2222-0004-$DT', '$GROUP_UUID', 's3aAccessKey', '$REDSHIFT_ACCESS_KEY', now() ),
+( '$DATE-2222-2222-0005-$DT', '$GROUP_UUID', 'iamAccessKey', '$REDSHIFT_ACCESS_KEY', now() );
+
+insert into connection_groups_environments( id, organization_id, environment_id, connection_group_id, created_at )
+values ( '$DATE-2222-2222-0006-$DT', 'default', '$ENV_UUID', '$GROUP_UUID', now() );
+
+
+-- Connection subgroup
+insert into connection_subgroups( connection_subgroup_id, name, hosts, port, db_engine_protocol, username, password, connection_group_id )
+values( '$SUBGROUP_UUID', 'redshift', '$REDSHIFT_HOST', 5439, 'redshift', '$REDSHIFT_USER', '$REDSHIFT_PASS', '$GROUP_UUID' );
+
+insert into connection_subgroup_roles( id, connection_subgroup_id, role, created_at )
+values
+( '$DATE-3333-3333-0001-$DT', '$SUBGROUP_UUID', 'large_user_query_role', now() ),
+( '$DATE-3333-3333-0002-$DT', '$SUBGROUP_UUID', 'small_user_query_role', now() ),
+( '$DATE-3333-3333-0003-$DT', '$SUBGROUP_UUID', 'system_query_role', now() );
+
+ENDL
+)
+
+{% else %}
+
+DATE=$(date +%Y%m%d)
+DT=$(date +%Y%m%d%H%M)
+ENV_UUID="prod"
+GROUP_UUID="$DATE-2222-2222-0000-$DT"
+SUBGROUP_UUID="$DATE-3333-3333-0000-$DT"
+
+{{ atscale_install_target}}/current/bin/database/postgres_psql < <(cat <<ENDL
+-- Environment
+insert into environment (env_id, org_id, name, default_env, created_at, updated_at, hiveserver2_port )
+values ( '$ENV_UUID', 'default', 'prod', 't', now(), now(), 11111 );
+
+-- Connection group
+insert into connection_groups ( org_id, conn_id, hdfs_uri, default_schema, id, name, database )
+values ( 'default', '$CONNECTION_ID', '$REDSHIFT_FS_URL', '$REDSHIFT_SCHEMA', '$GROUP_UUID', 'redshift', '$REDSHIFT_SCHEMA' );
+
+insert into connection_group_extra_props( id, connection_group_id, property_name, property_value, created_at )
+values
+( '$DATE-2222-2222-0001-$DT', '$GROUP_UUID', 's3BucketRegion', '$REDSHIFT_BUCKET_REGION', now() ),
+( '$DATE-2222-2222-0002-$DT', '$GROUP_UUID', 's3aSecretKey', '$REDSHIFT_SECRET_KEY', now() ),
+( '$DATE-2222-2222-0003-$DT', '$GROUP_UUID', 'iamSecretKey', '$REDSHIFT_SECRET_KEY', now() ),
+( '$DATE-2222-2222-0004-$DT', '$GROUP_UUID', 's3aAccessKey', '$REDSHIFT_ACCESS_KEY', now() ),
+( '$DATE-2222-2222-0005-$DT', '$GROUP_UUID', 'iamAccessKey', '$REDSHIFT_ACCESS_KEY', now() );
+
+insert into connection_groups_environments( id, organization_id, environment_id, connection_group_id, created_at )
+values ( '$DATE-2222-2222-0006-$DT', 'default', '$ENV_UUID', '$GROUP_UUID', now() );
+
+
+-- Connection subgroup
+insert into connection_subgroups( connection_subgroup_id, name, hosts, port, db_engine_protocol, username, password, connection_group_id )
+values( '$SUBGROUP_UUID', 'redshift', '$REDSHIFT_HOST', 5439, 'redshift', '$REDSHIFT_USER', '$REDSHIFT_PASS', '$GROUP_UUID' );
+
+insert into connection_subgroup_roles( id, connection_subgroup_id, role, created_at )
+values
+( '$DATE-3333-3333-0001-$DT', '$SUBGROUP_UUID', 'large_user_query_role', now() ),
+( '$DATE-3333-3333-0002-$DT', '$SUBGROUP_UUID', 'small_user_query_role', now() ),
+( '$DATE-3333-3333-0003-$DT', '$SUBGROUP_UUID', 'system_query_role', now() );
+
+ENDL
+)
+
+{% endif %}
