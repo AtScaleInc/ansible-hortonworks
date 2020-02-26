@@ -31,6 +31,11 @@
   shell: "{{ kdc_init_command }} -r {{ security_options.realm | upper }} -P {{ security_options.kdc_master_key }}"
   args:
     creates: "{{ kdc_database_file }}"
+
+- name: Create the KDC stash for realm {{ security_options.realm | upper }}
+  shell: "{{ kdc_stash_command }} -r {{ security_options.realm | upper }} -P {{ security_options.kdc_master_key }}"
+  args:
+    creates: "{{ kdc_stash_file }}"
   notify: Restart krb5
 
 - meta: flush_handlers

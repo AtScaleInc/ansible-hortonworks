@@ -162,3 +162,16 @@
       run_once: true
       become: false
   when: security != "none" and security_options.http_authentication|default(false) and install_hdp is defined and install_hdp
+
+- name: Add the group 'atscale' with a specific uid
+  group:
+    name: atscale
+    gid: 1012
+    state: present  
+
+- name: Add the user 'atscale' with a specific uid
+  user:
+    name: atscale
+    comment: atscale user
+    uid: 1012
+    group: atscale  

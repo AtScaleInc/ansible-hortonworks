@@ -1117,7 +1117,7 @@
         { "name" : "KERBEROS_CLIENT" },
 {% endif %}
         {% if hive_mysql_embedded_group is defined and hive_mysql_embedded_group == blueprint_item.host_group %}{ "name" : "MYSQL_SERVER" },{% endif %}
-        {% for service in blueprint_item.services -%}
+        {% for service in blueprint_item.services if service != "ATSCALE" -%}
         { "name" : "{{ service }}" }{% if not loop.last %},{% endif %}
 
         {% endfor %}

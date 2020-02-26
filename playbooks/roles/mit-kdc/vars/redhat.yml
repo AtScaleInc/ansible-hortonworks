@@ -6,9 +6,11 @@ kdc_packages:
 kdc_service_name: krb5kdc
 kadmin_service_name: kadmin
 
-kdc_init_command: kdb5_util create -s -W
+kdc_init_command: kdb5_util create
+kdc_stash_command: kdb5_util stash
 kadmin_command: kadmin.local
 
 kdc_config_file: /var/kerberos/krb5kdc/kdc.conf
 kdc_acl_file: /var/kerberos/krb5kdc/kadm5.acl
-kdc_database_file: /var/kerberos/krb5kdc/principal
+kdc_stash_file: /var/kerberos/krb5kdc/kdc_stash
+kdc_database_file: /var/kerberos/krb5kdc/kdc_principal

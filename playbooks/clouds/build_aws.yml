@@ -43,6 +43,14 @@
         state: present
       when: cluster_igw.gateway_id is defined
 
+    # - name: Get Security Groups 
+    #   ec2_group_info:
+    #     region: "{{ cloud_config.region }}"
+    #     filters:
+    #       group-name: "{{ item.name }}"
+    #   with_items: "{{ cloud_config.security_groups }}"
+    #   register: existing_cluster_security_groups
+
     - name: Create Security Groups
       ec2_group:
         region: "{{ cloud_config.region }}"
@@ -55,6 +63,15 @@
       with_items: "{{ cloud_config.security_groups }}"
       register: cluster_security_groups
       tags: security_groups
+      ignore_errors: True
+      # when: existing_cluster_security_groups is defined and not (existing_cluster_security_groups|length == cloud_config.security_groups|length)
+
+    - name: Fail if error in Security groups other than already exist error
+      fail:
+        msg: "Error when creating security groups: {{ cluster_security_groups.msg }}"
+      failed_when: 
+        - "'failed' in cluster_security_groups.msg"
+        - "'InvalidPermission.Duplicate' not in cluster_security_groups.msg"
 
     - name: Upload the SSH Key
       ec2_key:
