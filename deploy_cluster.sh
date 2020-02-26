@@ -1,8 +1,10 @@
 #!/bin/bash
 
 export CLOUD_TO_USE=aws
-export AWS_ACCESS_KEY_ID='AKIA54UMQCLY7AJCZQ2E'
-export AWS_SECRET_ACCESS_KEY='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'
+if [ -z $AWS_ACCESS_KEY_ID ] || [-z $AWS_SECRET_ACCESS_KEY ]; then
+  echo "MUST DEFINE AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY variables"
+  exit 1
+fi
 
 cluster_name="magic_cluster_$1"
 
