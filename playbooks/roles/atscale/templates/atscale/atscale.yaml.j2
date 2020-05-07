@@ -7,6 +7,10 @@ loadbalancer_dns_name: "{{ hostvars[groups['atscale-server']|first]['public_dns_
 engine:
   memory: 2G
 
+kerberos:
+  enabled: {{ 'true' if security == "mit-kdc" else 'false' }}
+  keytab: "/home/atscale/atscale.keytab"
+  principal: "atscale/{{ hostvars[groups['atscale-server']|first]['public_dns_name'] }}@{{ security_options.realm | upper }}"
 
 hosts:
   - dnsname: "{{ hostvars[groups['atscale-server']|first]['public_dns_name'] }}"

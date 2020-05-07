@@ -1,5 +1,5 @@
 ---
-secured: "no"
+#secured: "no"
 as_version: 2019.2.2.904
 atscale_install_target: /opt/atscale
 atscale_hdfs_home: "/user/{{ atscale_user }}"
@@ -21,3 +21,5 @@ atscale_user: atscale
 atscale_uid: 1010
 atscale_group: atscale
 atscale_gid: 1010
+
+kadmin_command: kadmin

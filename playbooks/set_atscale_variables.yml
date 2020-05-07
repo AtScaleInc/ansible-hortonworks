@@ -11,12 +11,21 @@
     - name: Initialize the ambari_groups and atscale_groups lists
       set_fact:
         atscale_groups: []
+        ambari_groups: []
 
     - block:
         - name: Populate the atscale_groups list (dynamic blueprint)
           set_fact:
             atscale_groups: "{{ atscale_groups }} + [ '{{ item.host_group }}' ]"
           when: groups[item.host_group] is defined and groups[item.host_group]|length > 0 and 'ATSCALE' in item.services
+          with_items: "{{ blueprint_dynamic }}"
+          no_log: False
+
+    - block:
+        - name: Populate the ambari_groups list (dynamic blueprint)
+          set_fact:
+            ambari_groups: "{{ ambari_groups }} + [ '{{ item.host_group }}' ]"
+          when: groups[item.host_group] is defined and groups[item.host_group]|length > 0 and 'AMBARI_SERVER' in item.services
           with_items: "{{ blueprint_dynamic }}"
           no_log: False
 
@@ -32,7 +41,22 @@
       with_items: "{{ atscale_groups }}"
 
 
+    - name: Fail if the ambari_groups list is empty
+      fail:
+        msg: "The ambari_groups list is empty. This usually means there is no 'AMBARI_SERVER' component defined in the blueprint or there is no Ansible inventory group corresponding with the name of the blueprint's host_group."
+      when: ambari_groups|length == 0
+
     - name: Add nodes to the atscale-server group
       add_host:
         name: "{{ groups[atscale_groups|first]|first }}"
         groups: "atscale-server"
+
+    - name: Add nodes to the ambari-server group
+      add_host:
+        name: "{{ groups[ambari_groups|first]|first }}"
+        groups: "ambari-server"
+
+    - name: Fail if no Ansible inventory group called 'ambari-server' exists
+      fail:
+        msg: "The 'ambari-server' Ansible inventory group is required before continuing. Check the inventory for possible issues."
+      when: groups['ambari-server'] is not defined or (groups['ambari-server'] is defined and groups['ambari-server']|length == 0)

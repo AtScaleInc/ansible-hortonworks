@@ -1,31 +1,3 @@
-
-- name: Generate startup scripts
-  template:
-    src: "templates/bin/{{ item }}.j2"
-    dest: "{{ image_util_dir }}/{{ item }}"
-    mode: 0755
-  with_items:
-    - "load-sample-data.sh"
-    - "set-engine-setting.sh"
-    - "initialize-organization.sh"
-    - "create-data-warehouse.sh"
-    #- "set-sql-engine.sh"
-    - "set-atscale-param.sh"
-    - "set-hostname.sh"
-    - "set-password.sh"
-    - "load-license.sh"
-    - "load-test-data.sh"
-    - "configure-directory.sh"
-
-- name: Generate startup scripts
-  template:
-    src: "templates/bin/{{ item }}.j2"
-    dest: "{{ image_util_dir }}/{{ item }}"
-    mode: 0755
-  with_items:
-    - "update-group-mappings.sh"
-    - "create-test-user.sh"
-
 - name: Set ulimits
   pam_limits:
     domain: "{{ atscale_user }}"
@@ -34,6 +6,25 @@
     value: "{{item.value}}"
   with_items:
   - { limit_type: '-', limit_item: 'nproc', value: '{{ atscale_user_limit_nproc }}' }
+
+
+- block:
+  - name: Add the atscale principal for realm {{ security_options.realm | upper }}
+    shell: "{{ kadmin_command }} -r {{ security_options.realm | upper }} -p {{ security_options.admin_principal }}/admin -w {{ security_options.admin_password }} -q \"add_principal -randkey atscale/{{ hostvars[groups['atscale-server']|first]['public_dns_name'] }}@{{ security_options.realm | upper }}\""
+    register: addprinc_result
+
+  - name: Fail if the atscale principal could not be created
+    fail:
+      msg: The atscale principal could not be created. Error is {{ addprinc_result.stderr }}
+    when: addprinc_result is failed or not (addprinc_result.stdout is search("Principal .* created") or addprinc_result.stderr is search("Principal or policy already exists while creating"))  
+
+  - name: Add the atscale keytab for realm {{ security_options.realm | upper }}
+    shell: "{{ kadmin_command }} -r {{ security_options.realm | upper }} -p {{ security_options.admin_principal }}/admin -w {{ security_options.admin_password }} -q \"ktadd -k /home/atscale/atscale.keytab atscale/{{ hostvars[groups['atscale-server']|first]['public_dns_name'] }}@{{ security_options.realm | upper }}\""
+    register: ktadd_result
+
+  - name: Change the owner of the atscale keytab
+    shell: "chown {{ atscale_user }} /home/atscale/atscale.keytab "
+  when: security == "mit-kdc"
 
 
 - name: Download Atscale package
@@ -59,10 +50,30 @@
 - name: Configuring atscale
   command: "sudo su - {{ atscale_user }} -c 'cd {{ atscale_install_target }}/versions/{{ as_version }} && ./bin/configurator.sh --first-time --automatic-install'"
   register: command_result
+  ignore_errors: True
 
 - name: "Configuring atscale call output"
   debug:
     var: command_result
+
+- block: 
+
+  - name: Stopping atscale if script exists
+    command: "[[ -f {{ atscale_install_target }}/bin/atscale_stop ]] && sudo su - {{ atscale_user }} -c 'cd {{ atscale_install_target }}/ && ./bin/atscale_stop -f'"
+
+  - name: Uninstall atscale rpm package
+    shell: "rpm -e {{ atscale_installer_basename }}"
+
+  - name: Delete atscale installation folder
+    shell: "rm -rf {{ atscale_install_target }}"
+
+  - name: Fail if error in Configuring Atscale
+    fail:
+      msg: "Error when configuring AtScale"
+    failed_when: 
+      - "'ERROR' in command_result.stdout"
+      - "'Some configuration couldn't be verified' not in command_result.stdout"
+  when: "'ERROR' in command_result.stdout"
 
 - block:
   - name: Install check
